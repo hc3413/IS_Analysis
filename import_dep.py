@@ -23,6 +23,9 @@ from matplotlib.colors import LogNorm, ListedColormap
 from matplotlib.ticker import LogFormatter
 from matplotlib.ticker import LogFormatterSciNotation
 import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+
 
 import scipy
 from scipy.optimize import fsolve
