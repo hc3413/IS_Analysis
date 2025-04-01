@@ -2,13 +2,44 @@
 from import_dep import *
 
 
+def generate_colormaps_and_normalizers(data_in, c_bar):
+        """
+        Generate colormap and normalizer based on temperature or DC offset.
+        """
+        if c_bar == 1:  # Colorbar for temperature
+            values = [m.Temperature for m in data_in if m.Temperature is not None]
+        elif c_bar == 2:  # Colorbar for DC offset
+            values = [m.DC_offset for m in data_in if m.DC_offset is not None]
+        else:
+            return None, None, None, None
+
+        min_val, max_val = min(values), max(values)
+        norm = Normalize(vmin=min_val, vmax=max_val)
+        cmap = plt.get_cmap('coolwarm')
+        return cmap, norm, min_val, max_val
+
+def add_colorbar(fig, ax, cmap, norm, min_val, max_val, label):
+    """
+    Add a colorbar to the figure for both axes.
+    """
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.05, pad=0.04)
+    cbar.set_label(label)
+    cbar.set_ticks([min_val, max_val])
+    cbar.set_ticklabels([f'{min_val:.1f}', f'{max_val:.1f}'])
+
         
 def IS_plot(
     data_in: list, 
     d_type: str,
     x_lim: tuple = None,
-    y_lim: tuple = None,
+    y_lim_left: tuple = None, #limit for the left plot y axis
+    y_lim_right: tuple = None, #limit for the right plot y axis
     sort_data: bool = True, # Order the data by temperature and DC offset
+    fig_size: tuple = (10, 5), # Size of the figure - needed to pad plots correctly for colorbar
+    c_bar: float = 0, # 0 = no colorbar, 1 = colorbar for temperature, 2 = colorbar for DC_offset
+    
     ):
     '''Plotting function for the impedance data
     data_in: list - the list of Measurement class data to plot
@@ -33,8 +64,25 @@ def IS_plot(
         m.DC_offset if m.DC_offset is not None else float('inf')
         ))
         
-    # Create the figure and axes
-    fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+   
+
+    # Generate colormap and normalizer if color_bar is enabled
+    cmap, norm, min_val, max_val = generate_colormaps_and_normalizers(data_in, c_bar)
+    color_label = "Temperature (K)" if c_bar == 1 else "DC Offset (V)" if c_bar == 2 else None
+
+    if c_bar == 0:
+        # Create the figure and axes using gridspec
+        fig = plt.figure()
+        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])  # Define grid layout
+        ax = [fig.add_subplot(gs[0]), fig.add_subplot(gs[1])]
+    
+    # If we are adding a colorbar we add some padding to the right of the second plot so the scaling doesn't change when a single colorbar is added
+    else:
+        fig = plt.figure(figsize= (fig_size[0] + fig_size[0]/9 , fig_size[1]) )
+        # add a third subplot for the colorbar
+        gs = gridspec.GridSpec(1, 3, width_ratios=[fig_size[0], fig_size[0], fig_size[0]/9], wspace=0.0)
+        ax = [fig.add_subplot(gs[0]), fig.add_subplot(gs[1]), fig.add_subplot(gs[2])]
+
 
     # Titles and labels
     titles = {
@@ -56,7 +104,9 @@ def IS_plot(
     # Create a colormap from plasma the same length as data_in
     cmap_dat = plt.get_cmap('plasma')(np.linspace(0, 1, len(data_in)))
     
-    for i, measurement in enumerate(data_in, start = 0):
+    
+    
+    for i, measurement in enumerate(data_in, start=0):
         plot_string = measurement.plot_string  # Label for legend
 
         if d_type == 'Zabsphi':
@@ -66,7 +116,7 @@ def IS_plot(
         elif d_type == 'Zrealimag':
             data = measurement.Zrealimag
             x, y1, y2 = data[:, 0], data[:, 1], -data[:, 2]  # (frequency, Zreal, Zimag)
-            #ax[0].set_yscale('log')
+            # ax[0].set_yscale('log')
         elif d_type == 'permittivity':
             data = measurement.permittivity
             x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]  # (frequency, ε′, ε″)
@@ -80,15 +130,25 @@ def IS_plot(
         else:
             print('Invalid data type')
             return
-        
-        # Mask the data based off the x_limits if given
+
+        # Mask the data based on the x_limits if given
         if x_lim:
             x_mask = (x >= x_lim[0]) & (x <= x_lim[1])
             x, y1, y2 = x[x_mask], y1[x_mask], y2[x_mask]
+        # Separate x-axes for left and right y-axes
+        x1, x2 = x.copy(), x.copy()
+        # Mask the data based on the y_limits if given
+        if y_lim_left:
+            y1_mask = (y1 >= y_lim_left[0]) & (y1 <= y_lim_left[1])
+            x1, y1 = x1[y1_mask], y1[y1_mask]
+        if y_lim_right:
+            y2_mask = (y2 >= y_lim_right[0]) & (y2 <= y_lim_right[1])
+            x2, y2 = x2[y2_mask], y2[y2_mask]
 
         # Plot
-        ax[0].semilogx(x, y1, label=plot_string, color=cmap_dat[i])
-        ax[1].semilogx(x, y2, label=plot_string, color=cmap_dat[i])
+        color = cmap(norm(measurement.Temperature if c_bar == 1 else measurement.DC_offset)) if c_bar else cmap_dat[i]
+        ax[0].semilogx(x1, y1, label=plot_string, color=color)
+        ax[1].semilogx(x2, y2, label=plot_string, color=color)
 
     # Set axis labels
     ax[0].set_xlabel('Frequency (Hz)')
@@ -97,11 +157,16 @@ def IS_plot(
     ax[1].set_ylabel(ylabels[1])
 
 
+    # Add colorbar if enabled
+    if c_bar:
+        add_colorbar(fig, ax[2], cmap, norm, min_val, max_val, color_label)
+
     # Legends
-    ax[0].legend(loc='best', fontsize='small', markerscale=0.8, framealpha=0.4)
-    ax[1].legend(loc='best', fontsize='small', markerscale=0.8, framealpha=0.4)
+    ax[0].legend()#loc='best', fontsize='small', markerscale=0.8, framealpha=0.4)
+    ax[1].legend()#loc='best', fontsize='small', markerscale=0.8, framealpha=0.4)
 
     # Layout and show
-    plt.tight_layout()
     plt.show()
     return fig, ax
+
+

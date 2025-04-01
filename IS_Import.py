@@ -316,5 +316,5 @@ class SolatronIS(ImpedanceData):
                 
 
             except Exception as e:
-                print(f"Error loading file {fi}: {e}")
+                print(f"Error loading file {fi.name}: {e}")
                 continue
