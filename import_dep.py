@@ -26,6 +26,11 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+import scienceplots
+import readline
+from cycler import cycler
+import seaborn as sns
+import matplotlib.gridspec as gridspec
 
 import scipy
 from scipy.optimize import fsolve

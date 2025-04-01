@@ -3,15 +3,24 @@ from import_dep import *
 
 
 @dataclass
-class Measurement:
+class ISdata:
     """Dataclass to store a single impedance measurement
     Regardless of the instrument used, the data is stored in the same format and will have 
     all of the properties below"""
+    # Non-optional attributes
     file_name: str
     run_number: int
-    DC_offset: float
-    Temperature: float
     Zabsphi: np.ndarray  # (frequency, Zabs, phi)
+    
+    # Optional device metadata attributes
+    DC_offset: float = None
+    Temperature: float = None
+    res_state: str = None
+    vac_state: str = None
+    device_name: str = None
+    amp_state: str = None
+    
+    # Calculated transformed data attributes
     Zrealimag: np.ndarray = None  # (frequency, Zreal, Zimag), computed later
     permittivity: np.ndarray = None  # (frequency, Real_permittivity, Imag_permittivity), computed later
     tandelta: np.ndarray = None  # (frequency, tan delta), computed later
@@ -20,25 +29,42 @@ class Measurement:
     
     # Tuple storing the data frames of the imported data for debugging
     Zabsphi_df: pd.DataFrame = None
-
+    
+    # Generate a plot label string based on metadata
     @property
     def plot_string(self) -> str:
-        """Generate a plot label string based on metadata."""
-        return f'run={self.run_number}, DC={self.DC_offset}, T={self.Temperature}'
-
+        """Generate a plot label string based on metadata, skipping None values."""
+        parts = []
+        if self.run_number is not None:
+            parts.append(f"run={self.run_number}")
+        if self.DC_offset is not None:
+            parts.append(f"DC={self.DC_offset}")
+        if self.Temperature is not None:
+            parts.append(f"T={self.Temperature}")
+        if self.res_state is not None:
+            parts.append(self.res_state)
+        if self.vac_state is not None:
+            parts.append(self.vac_state)
+        if self.amp_state is not None:
+            parts.append(self.amp_state)
+        if self.device_name is not None:
+            parts.append(self.device_name)
+        return ", ".join(parts)
 
 class ImpedanceData(ABC):
     """Abstract base class for storing and processing impedance data from all instruments."""
 
     def __init__(self):
-        self.measurements: dict[int, Measurement] = {}  # Store data in a dictionary indexed by a number from 0, 1, 2, ...
+        self.measurements: dict[int, ISdata] = {}  # Store data in a dictionary indexed by a number from 0, 1, 2, ...
 
     def __iter__(self):
-        """Allow direct iteration over measurement objects."""
+        """Allow direct iteration over measurement objects.
+        you can directly call for m in imported_data_object and it will return the ISdata objects:"""
         return iter(self.measurements.values())
 
-    def __getitem__(self, index_number: int) -> Measurement:
-        """Safely retrieve a measurement from its Index number, with error handling."""
+    def __getitem__(self, index_number: int) -> ISdata:
+        """Safely retrieve a measurement from its Index number, with error handling.
+        you can directly call imported_data_object[0] to get the first measurement ISdata object"""
         if index_number not in self.measurements:
             raise KeyError(f"Index number {index_number} not found.")
         return self.measurements[index_number]
@@ -48,6 +74,7 @@ class ImpedanceData(ABC):
         """Abstract method that must be implemented by subclasses to load data."""
         pass
 
+
     def _transform_data(self):
         """Transform (Zabs, phi) to: (Zreal, Zimag), permittivity, tandelta, conductivity, modulus
         Then update the measurement objects with this data."""
@@ -56,30 +83,34 @@ class ImpedanceData(ABC):
             return
 
         for measurement in self:
+            # Constants
+            eps0 = 8.854e-12  # Vacuum permittivity (F/m)
+            Cap_0 = eps0*((20e-6)**2)/(30e-9)  # Vacuum capacitance 
+
             # Compute Zreal, Zimag from Zabs, phi
-            Zabsphi = measurement.Zabsphi
-            Zreal = Zabsphi[:, 1] * np.cos(np.radians(Zabsphi[:, 2]))
-            Zimag = Zabsphi[:, 1] * np.sin(np.radians(Zabsphi[:, 2]))
-            measurement.Zrealimag = np.column_stack((Zabsphi[:, 0], Zreal, Zimag))  # (frequency, Zreal, Zimag )
-            
-            # Compute permittivity from Zabs, phi
-            permittivity = Zabsphi[:, 1] / (2 * np.pi * Zabsphi[:, 0] * 8.854e-12)
-            measurement.permittivity = np.column_stack((Zabsphi[:, 0], permittivity.real, permittivity.imag))  # (frequency, Real_permittivity, Imag_permittivity)
-            
-            # Compute tan delta from permittivity
-            tandelta = measurement.permittivity[:, 2] / measurement.permittivity[:, 1]
-            measurement.tandelta = np.column_stack((Zabsphi[:, 0], tandelta))  # (tan delta, frequency)
-            
-            # Compute conductivity from Zabs, phi
-            conductivity = Zabsphi[:, 1] / (2 * np.pi * Zabsphi[:, 0] * 8.854e-12) * 2 * np.pi * Zabsphi[:, 0]
-            loss = conductivity / (2 * np.pi * Zabsphi[:, 0] * 8.854e-12)
-            measurement.conductivity = np.column_stack((Zabsphi[:, 0], conductivity, loss))  # (frequency, conductivity, loss)
-            
-            # Compute modulus from permittivity
-            modulus = np.sqrt(measurement.permittivity[:, 1] ** 2 + measurement.permittivity[:, 2] ** 2)
-            phase = np.degrees(np.arctan(measurement.permittivity[:, 2] / measurement.permittivity[:, 1]))
-            measurement.modulus = np.column_stack((Zabsphi[:, 0], modulus, phase))  # (frequency, modulus, phase)
-            
+            Zap = np.copy(measurement.Zabsphi) # Copy the data to avoid modifying the original            
+            Z_complex = Zap[:, 1]*np.exp(1j*np.radians(Zap[:, 2])) # Combine Zreal and Zimag to form complex impedance Z
+            measurement.Zrealimag = np.column_stack((Zap[:, 0], np.real(Z_complex), np.imag(Z_complex)))  # (frequency, Zreal, Zimag)
+
+            # Compute permittivity (real and imaginary parts)
+            omega = 2 * np.pi * Zap[:, 0]
+            epsilon = 1/(1j*omega*Cap_0 * Z_complex)
+            epsilon_real = np.real(epsilon)  # 
+            epsilon_imag = -np.imag(epsilon)  # e = e' - je''
+            measurement.permittivity = np.column_stack((Zap[:, 0], epsilon_real, epsilon_imag))
+
+            # Compute tan delta
+            tandelta = epsilon_imag / (epsilon_real + 1e-20)  # Prevent division by zero
+            measurement.tandelta = np.column_stack((Zap[:, 0], tandelta))
+
+            # Compute conductivity
+            conductivity = omega * eps0 * epsilon_imag
+            measurement.conductivity = np.column_stack((Zap[:, 0], conductivity))
+
+            # Compute electric modulus (real and imaginary parts)
+            Modulus_complex = 1/epsilon
+            measurement.modulus = np.column_stack((Zap[:, 0], np.real(Modulus_complex), np.imag(Modulus_complex)))
+    
 
     def plot(self, index_numbers: tuple):
         """Plot Zabs and phi vs frequency for a tuple of given run numbers on a log-log scale.
@@ -121,7 +152,23 @@ class ImpedanceData(ABC):
 
         plt.tight_layout()
         plt.show()
-        
+    
+    @staticmethod
+    def _extract_value(filename: str, pattern: str, default: float) -> float:
+        """Helper method to extract numeric values from filenames."""
+        match = re.search(pattern, filename)
+        # Return the extracted value if found rounded to 2dp, otherwise return the default value
+        return round(float(match.group(1)), 2) if match else default
+
+    @staticmethod
+    def _extract_string(filename: str, patterns: tuple, default: str) -> str:
+        """Helper method to extract string values from filenames.
+        Searches for a match within a tuple of patterns."""
+        filename_lower = filename.lower()
+        # Return the first matching pattern or the default value if none found
+        return next((p for p in patterns if p.lower() in filename_lower), default)  
+    
+    
 
 
 class AgilentIS(ImpedanceData):
@@ -150,15 +197,15 @@ class AgilentIS(ImpedanceData):
                 df = pd.read_csv(fi, sep=',', skiprows=0, header=None)
                 # Drop columns that contain only NaN values
                 df.dropna(axis=1, how='all', inplace=True)
-                # Rename the columns
+                # Rename the columns with frequency input in degrees
                 df.columns = ['timer', 'NA', 'frequency', 'NA2', 'Zabs', 'phi']
                 
                 #print(df.head(3))
                 
                 # Extract the run number from the filename
                 run_number = self._extract_value(fi.stem, r'run(\d+)', default=0)
-                # Create a Measurement object using the extracted data
-                measurement = Measurement(
+                # Create a ISdata object using the extracted data
+                measurement = ISdata(
                     file_name=str(fi),
                     run_number=int(run_number),
                     DC_offset=self._extract_value(fi.stem, r'bias_([\d.]+)', default=0),
@@ -167,56 +214,107 @@ class AgilentIS(ImpedanceData):
                     Zabsphi_df = df  # Store the data frame for debugging
                 )
                 
-                # Store the measurement object in the dictionary indexed by an integer
+                # Store the ISdata object in the dictionary indexed by an integer
                 self.measurements[idx] = measurement 
+                
+                print(f"run={measurement.run_number}, DC={measurement.DC_offset}, T={measurement.Temperature}'")
 
             except Exception as e:
                 print(f"Error loading file {fi}: {e}")
                 continue
 
-    @staticmethod
-    def _extract_value(filename: str, pattern: str, default: float) -> float:
-        """Helper method to extract numeric values from filenames."""
-        match = re.search(pattern, filename)
-        # Return the extracted value if found rounded to 2dp, otherwise return the default value
-        return round(float(match.group(1)), 2) if match else default
-
+    
 
 class SolatronIS(ImpedanceData):
     """Class for importing and processing Solatron impedance spectroscopy data."""
 
-    def __init__(self, root_folder: str, file_name: str):
+    def __init__(self, root_folder: str, folder_name: str):
         super().__init__()
-        self.file_path = Path(root_folder) / file_name
+        self.folder_path = Path(root_folder) / Path(folder_name)
         self._load_data()
         self._transform_data()
 
     def _load_data(self):
-        """Load data from a single file with multiple runs stored in columns."""
-        if not self.file_path.exists():
-            print(f"Error: File {self.file_path} does not exist.")
+        """Load data from all CSV files in the folder."""
+        # Get a list of all the files in the folder as an iterator of path objects and sort alphabetically
+        files = sorted([f for f in self.folder_path.iterdir() if f.suffix == '.csv'])
+        
+        # Print error if no files were found
+        if not files:
+            print("Error: No CSV files found.")
             return
+        
+        # Initiate a counter
+        counter = 0
+        for fi in files:
+            try:
+                # Read the data starting from the header line
+                df = pd.read_csv(fi, sep=',', skiprows=4, header=None)
+                df = df.iloc[:, :14]  # Keep only the first 14 columns
+                # Drop columns that contain only NaN values
+                #df.dropna(axis=1, how='all', inplace=True)
+                # Rename the columns with frequency input in degrees
+                df.columns = [
+                    "Result Number", 
+                    "Sweep Number", 
+                    "Point Number", 
+                    "Time", 
+                    "frequency", 
+                    "AC Level (V)", 
+                    "DC Level (V)", 
+                    "Set Point", 
+                    "Temperature", 
+                    "Control", 
+                    "Zabs", 
+                    "phi", 
+                    "Admittance Magnitude (S)", 
+                    "Capacitance Magnitude (F)"
+                    ]
+                # Extract the run number from the filename
+                run_number = self._extract_value(fi.stem, r'run(\d+)', default=0)
+                # Extract the total number of sweep numbers
+                total_sweeps = df['Sweep Number'].nunique()
+                # Extract the total number of points per sweep
+                total_points = df['Point Number'].nunique()
+                
+                # Loop over the sweep numbers storing a new ISdata object for each sweep
+                for sweep_no in range(1,total_sweeps+1):
+                    # Filter the data frame for the current sweep number
+                    df_sweep = df[df['Sweep Number'] == sweep_no]
+                    # Check that the total number of points is the same as the number we expect - if not then skips the sweep
+                    if len(df_sweep) != total_points:
+                        print(f"Error: file{fi.name}, sweep {sweep_no} does not have the expected number of points.")
+                        continue
+                    
+                    # Extract the temperature value if it is not a Nan
+                    temperature_value = df_sweep['Temperature'].iloc[0]
+                    
+                    # Convert the temperature from Kelvin to Celsius if it is not a Nan
+                    if temperature_value == '-':
+                        temperature_kelvin = None
+                    else:
+                        temperature_kelvin = float(temperature_value) - 273.15
 
-        try:
-            df = pd.read_csv(self.file_path, sep=',', header=0)
-        except Exception as e:
-            print(f"Error loading file {self.file_path}: {e}")
-            return
+                    # Create a ISdata object using the extracted data
+                    measurement = ISdata(
+                        file_name =str(fi.name),
+                        run_number =int(run_number),
+                        DC_offset = df_sweep['DC Level (V)'].iloc[0], # Extract the DC level from the first row of the sweep
+                        Temperature = temperature_kelvin,
+                        Zabsphi= df_sweep[['frequency', 'Zabs', 'phi']].to_numpy(),
+                        Zabsphi_df = df_sweep,  # Store the data frame for debugging
+                        res_state = self._extract_string(fi.stem, ('pristine, electroformed, doubleformed, formed'), default=None), #finds first match for state in tuple
+                        vac_state = self._extract_string(fi.stem, ('vacuum', 'ambient', 'vac'), default=None), #finds first match for state in tuple
+                        amp_state = self._extract_string(fi.stem, ('noamp', 'amp'), default=None), #finds first match for state in tuple
+                        device_name = self._extract_string(fi.stem, ('wirebond1','wirebond2','wirebond3', 'wirebond4','wirebond5','wirebond6', 'wirebond1v2','wirebond2v2', 'wirebond3v2','wirebond4v2'), default=None), #finds first match for state in tuple
+                    )
+                    
+                    # Store the ISdata object in the dictionary indexed by an integer
+                    self.measurements[counter] = measurement 
+                    counter += 1 #increment the counter for the next measurement
+                    
+                
 
-        frequency = df.iloc[:, 0].values  # Frequency is in the first column
-
-        for i in range(1, df.shape[1], 2):  # Assuming alternating columns (Zabs, phi)
-            Zabs = df.iloc[:, i].values
-            phi = df.iloc[:, i + 1].values if i + 1 < df.shape[1] else np.zeros_like(Zabs)
-
-            run_number = i // 2 + 1
-            measurement = Measurement(
-                file_name=str(self.file_path),
-                run_number=run_number,
-                DC_offset=0,  # No DC bias data in this format
-                Temperature=0,  # No temperature data in this format
-                Zabsphi=np.column_stack((frequency, Zabs, phi)),
-                Zabsphi_df = pd.DataFrame({'frequency': frequency, 'Zabs': Zabs, 'phi': phi})  # Store the data frame
-            )
-
-            self.measurements[i] = measurement
+            except Exception as e:
+                print(f"Error loading file {fi}: {e}")
+                continue
