@@ -18,16 +18,48 @@ def generate_colormaps_and_normalizers(data_in, c_bar):
         cmap = plt.get_cmap('coolwarm')
         return cmap, norm, min_val, max_val
 
-def add_colorbar(fig, ax, cmap, norm, min_val, max_val, label):
+def add_colorbar(fig, cax, cmap, norm, min_val, max_val, c_bar, fig_size):
     """
     Add a colorbar to the figure for both axes.
     """
+    
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.05, pad=0.04)
-    cbar.set_label(label)
+    cbar = plt.colorbar(sm, cax=cax)
     cbar.set_ticks([min_val, max_val])
-    cbar.set_ticklabels([f'{min_val:.1f}', f'{max_val:.1f}'])
+    
+    if c_bar == 1:
+        cbar.set_label("Temperature")
+        cbar.set_ticklabels([f'{min_val:.1f} K', f'{max_val:.1f} K']) # Temperature
+    else:
+        cbar.set_label("DC Offset")
+        cbar.set_ticklabels([f'{min_val:.1f} V', f'{max_val:.1f} V']) # DC offset
+        
+    cbar.minorticks_off()  # Remove minor ticks
+    cbar.outline.set_linewidth(0.5)
+
+    # Adjust colorbar position and size based on figure size
+    if fig_size == [3.5, 2.625]:
+        height_scale = 0.8
+        pos = cax.get_position()
+        new_height = pos.height * height_scale
+        new_y0 = pos.y0 + (pos.height - new_height) / 2  # Center the colorbar vertically
+        cax.set_position([
+            pos.x0 + 0.03,  # Adjust x0 to move the colorbar to the right
+            new_y0,  # Center the colorbar vertically
+            pos.width * 0.3,  # Adjust width to shrink the colorbar
+            new_height  # Adjust height to shrink the colorbar
+        ])
+    else:
+        height_scale = 0.8
+        pos = cax.get_position()
+        new_height = pos.height * height_scale
+        new_y0 = pos.y0 + (pos.height - new_height) / 2  # Center the colorbar vertically
+        cax.set_position([
+            pos.x0 + 0.03,  # Adjust x0 to move the colorbar to the right
+            new_y0,  # Center the colorbar vertically
+            pos.width * 0.3,  # Adjust width to shrink the colorbar
+            new_height  # Adjust height to shrink the colorbar
+        ])
 
         
 def IS_plot(
@@ -68,19 +100,22 @@ def IS_plot(
 
     # Generate colormap and normalizer if color_bar is enabled
     cmap, norm, min_val, max_val = generate_colormaps_and_normalizers(data_in, c_bar)
-    color_label = "Temperature (K)" if c_bar == 1 else "DC Offset (V)" if c_bar == 2 else None
-
+    
+    # Create the figure and axes including correct scaling for colorbar
     if c_bar == 0:
         # Create the figure and axes using gridspec
-        fig = plt.figure()
+        fig = plt.figure(figsize = (fig_size[0], fig_size[1]/2))
         gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1])  # Define grid layout
         ax = [fig.add_subplot(gs[0]), fig.add_subplot(gs[1])]
     
     # If we are adding a colorbar we add some padding to the right of the second plot so the scaling doesn't change when a single colorbar is added
     else:
-        fig = plt.figure(figsize= (fig_size[0] + fig_size[0]/9 , fig_size[1]) )
+        # Keep the first two columns at ratio=1 each, then a slim column for colorbar
+        width_ratios = [1, 1, 1/9]
+        new_width = fig_size[0] * (sum(width_ratios) / 2.0)  # e.g., if the two columns = 2.0 in ratio
+        fig = plt.figure(figsize = (new_width , fig_size[1]/2))
         # add a third subplot for the colorbar
-        gs = gridspec.GridSpec(1, 3, width_ratios=[fig_size[0], fig_size[0], fig_size[0]/9], wspace=0.0)
+        gs = gridspec.GridSpec(1, 3, width_ratios = width_ratios)
         ax = [fig.add_subplot(gs[0]), fig.add_subplot(gs[1]), fig.add_subplot(gs[2])]
 
 
@@ -155,11 +190,12 @@ def IS_plot(
     ax[1].set_xlabel('Frequency (Hz)')
     ax[0].set_ylabel(ylabels[0])
     ax[1].set_ylabel(ylabels[1])
+    
 
 
     # Add colorbar if enabled
     if c_bar:
-        add_colorbar(fig, ax[2], cmap, norm, min_val, max_val, color_label)
+        add_colorbar(fig, ax[2], cmap, norm, min_val, max_val, c_bar, fig_size)
 
     # Legends
     ax[0].legend()#loc='best', fontsize='small', markerscale=0.8, framealpha=0.4)
