@@ -30,6 +30,7 @@ def set_plot_style(export_data = False, powerpoint_data = False, use_tex=True):
         'figure.figsize':fig_size,
         'savefig.bbox': 'tight',
         'savefig.pad_inches': 0.05,
+        'figure.constrained_layout.use': True, # Enable constrained layout by default
         
         # Font and text settings
         'font.family': ['serif'],
@@ -80,7 +81,7 @@ def set_plot_style(export_data = False, powerpoint_data = False, use_tex=True):
         'ytick.right': True,
         
         # Prevent autolayout to ensure that the figure size is obeyed
-        'figure.autolayout': False,
+        #'figure.autolayout': False,
     })
     
     return fig_size
