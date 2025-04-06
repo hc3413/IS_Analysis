@@ -14,6 +14,7 @@ class ISdata:
     
     # Optional device metadata attributes
     DC_offset: float = None
+    V_rms: float = None # AC voltage applied
     Temperature: float = None
     res_state: str = None
     vac_state: str = None
@@ -39,6 +40,8 @@ class ISdata:
             parts.append(f"run={self.run_number}")
         if self.DC_offset is not None:
             parts.append(f"DC={self.DC_offset}")
+        if self.V_rms is not None:
+            parts.append(f"V_rms={self.V_rms}")
         if self.Temperature is not None:
             parts.append(f"T={self.Temperature}")
         if self.res_state is not None:
@@ -300,6 +303,7 @@ class SolatronIS(ImpedanceData):
                         file_name =str(fi.name),
                         run_number =int(run_number),
                         DC_offset = df_sweep['DC Level (V)'].iloc[0], # Extract the DC level from the first row of the sweep
+                        V_rms = df_sweep['AC Level (V)'].iloc[0], # Extract the AC level from the first row of the sweep
                         Temperature = temperature_kelvin,
                         Zabsphi= df_sweep[['frequency', 'Zabs', 'phi']].to_numpy(),
                         Zabsphi_df = df_sweep,  # Store the data frame for debugging

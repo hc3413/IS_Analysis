@@ -11,6 +11,8 @@ def generate_colormaps_and_normalizers(data_in, c_bar):
             values = [m.Temperature for m in data_in if m.Temperature is not None]
         elif c_bar == 2:  # Colorbar for DC offset
             values = [m.DC_offset for m in data_in if m.DC_offset is not None]
+        elif c_bar == 3: # Colorbar for V_rms
+            values = [m.V_rms for m in data_in if m.V_rms is not None]
         else:
             return None, None, None, None
 
@@ -200,6 +202,8 @@ def IS_plot(
                 color = cmap(norm(measurement.Temperature))
             elif c_bar == 2 and measurement.DC_offset is not None:
                 color = cmap(norm(measurement.DC_offset))
+            elif c_bar == 3 and measurement.V_rms is not None:
+                color = cmap(norm(measurement.V_rms))
             else:
                 # Use default color cycle if no colorbar or value is None
                 color = colors[i % len(colors)] # Cycle through default colors
@@ -255,23 +259,29 @@ def IS_plot(
              if c_bar == 1:
                  cbar.set_ticklabels([f'{min_val:.1f} K', f'single value'])
                  cbar.set_label("Temperature (K)")
-             else:
+             elif c_bar == 2:
                  cbar.set_ticklabels([f'{min_val:.1f} V', f'single value'])
                  cbar.set_label("DC Offset (V)")
+             elif c_bar == 3:
+                 cbar.set_ticklabels([f'{min_val:.1f} V_rms', f'single value'])
+                 cbar.set_label("V_rms (V)")
         else:
              if c_bar == 1:
                  cbar.set_ticklabels([f'{min_val:.1f}', f'{max_val:.1f}']) # Just numbers, label indicates units
                  cbar.set_label("Temperature (K)")
-             else:
+             elif c_bar == 2:
                  cbar.set_ticklabels([f'{min_val:.1f}', f'{max_val:.1f}']) # Just numbers, label indicates units
                  cbar.set_label("DC Offset (V)")
+             elif c_bar == 3:
+                 cbar.set_ticklabels([f'{min_val:.1f}', f'{max_val:.1f}']) # Just numbers, label indicates units
+                 cbar.set_label("V_rms (V)")
 
         cbar.minorticks_off()
         cbar.outline.set_linewidth(0.5)
         
         
     # --- Legends ---
-    if c_bar in [1, 2] and not force_key and len(data_groups)>1 :  # Add group legend when colorbar is enabled and force_key is disabled
+    if c_bar != 0 and not force_key and len(data_groups)>1 :  # Add group legend when colorbar is enabled and force_key is disabled
         group_handles = [
             plt.Line2D([0], [0], color='black', linestyle=linestyle, label=label)
             for label, linestyle in group_legend_entries
