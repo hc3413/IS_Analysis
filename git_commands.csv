@@ -20,6 +20,8 @@ git push origin :<branch name> #another way of deleting it remotely
 git stash #stash your changes on a feature branch without commiting -> move branch to do some other stuff (only stashes added files)
 git stash pop #moved back to feature branch and this restores the stashed changes
 
+###YOU MUST ADD AND COMMMIT THE CHANGES IN THE BRANCH BEFORE SWITCHING BACK TO MAIN - else it will just merge the changes to main
+
 Merging
 git checkout main # switch to main branch 1st
 git merge <name of branch  -to be merged>
