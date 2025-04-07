@@ -8,12 +8,16 @@ from pathlib import Path
 import scienceplots
 import matplotlib.colors as colors
 from matplotlib import ticker
+
 from pptx import Presentation
 from pptx.util import Inches, Pt, Cm
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.oxml.ns import qn
 from pptx.oxml import parse_xml
+from pptx.enum.shapes import MSO_SHAPE
+
+
 import math
 from scipy.interpolate import griddata
 from matplotlib import cm
