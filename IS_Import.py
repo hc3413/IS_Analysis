@@ -23,11 +23,15 @@ class ISdata:
     amp_state: str = None
     
     # Calculated transformed data attributes
+    Zcomplex: np.ndarray = None  # (frequency, Zreal + j*Zimag), computed later
     Zrealimag: np.ndarray = None  # (frequency, Zreal, Zimag), computed later
     permittivity: np.ndarray = None  # (frequency, Real_permittivity, Imag_permittivity), computed later
     tandelta: np.ndarray = None  # (frequency, tan delta), computed later
     conductivity: np.ndarray = None  # (frequency, conductivity, loss), computed later
     modulus: np.ndarray = None  # (frequency, modulus, phase), computed later
+    
+    # Fitted data attributes
+    Zcomplex_fit: np.ndarray = None  # (frequency, Zabs, phi), fitted by a model
     
     # Tuple storing the data frames of the imported data for debugging
     Zabsphi_df: pd.DataFrame = None
@@ -105,6 +109,7 @@ class ImpedanceData(ABC):
             # Compute Zreal, Zimag from Zabs, phi
             Zap = np.copy(measurement.Zabsphi) # Copy the data to avoid modifying the original            
             Z_complex = Zap[:, 1]*np.exp(1j*np.radians(Zap[:, 2])) # Combine Zreal and Zimag to form complex impedance Z
+            measurement.Zcomplex = np.column_stack((Zap[:, 0], Z_complex))  # (frequency, Zreal + j*Zimag)
             measurement.Zrealimag = np.column_stack((Zap[:, 0], np.real(Z_complex), np.imag(Z_complex)))  # (frequency, Zreal, Zimag)
 
             # Compute permittivity (real and imaginary parts)

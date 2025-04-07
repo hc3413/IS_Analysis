@@ -1,6 +1,6 @@
 #import all the libraries needed
 from import_dep import *
-from scipy.signal import medfilt  # Import median filter
+
 
 
 def generate_colormaps_and_normalizers(data_in, c_bar):

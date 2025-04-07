@@ -13,8 +13,9 @@ import numpy as np
 import pandas as pd
 import scipy
 from scipy.interpolate import griddata
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, least_squares, differential_evolution
 from scipy.stats import linregress
+from scipy.signal import medfilt  
 
 # Visualization - matplotlib and related
 import matplotlib.pyplot as plt
@@ -30,6 +31,7 @@ from matplotlib import cm
 import scienceplots
 from cycler import cycler
 import seaborn as sns
+import warnings
 
 # PowerPoint automation
 from pptx import Presentation
