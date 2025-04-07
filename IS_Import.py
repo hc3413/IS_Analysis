@@ -11,6 +11,7 @@ class ISdata:
     file_name: str
     run_number: int
     Zabsphi: np.ndarray  # (frequency, Zabs, phi)
+    folder_path: Path # Path to the data, where we will also export the data
     
     # Optional device metadata attributes
     DC_offset: float = None
@@ -31,10 +32,17 @@ class ISdata:
     # Tuple storing the data frames of the imported data for debugging
     Zabsphi_df: pd.DataFrame = None
     
+    _plot_string_override: str = ""  # store user override for plot_string
+    
     # Generate a plot label string based on metadata
     @property
     def plot_string(self) -> str:
         """Generate a plot label string based on metadata, skipping None values."""
+        
+        if self._plot_string_override: # if the user has set a plot string override, use that
+            return self._plot_string_override
+        
+        # Otherwise, generate the plot string from the metadata
         parts = []
         if self.run_number is not None:
             parts.append(f"run={self.run_number}")
@@ -53,6 +61,10 @@ class ISdata:
         if self.device_name is not None:
             parts.append(self.device_name)
         return ", ".join(parts)
+    
+    @plot_string.setter
+    def plot_string(self, value: str):
+        self._plot_string_override = value if value else self._plot_string_override
 
 class ImpedanceData(ABC):
     """Abstract base class for storing and processing impedance data from all instruments."""
@@ -211,9 +223,10 @@ class AgilentIS(ImpedanceData):
                 measurement = ISdata(
                     file_name=str(fi),
                     run_number=int(run_number),
+                    Zabsphi=df[['frequency', 'Zabs', 'phi']].to_numpy(),
+                    folder_path = self.folder_path,
                     DC_offset=self._extract_value(fi.stem, r'bias_([\d.]+)', default=0),
                     Temperature=self._extract_value(fi.stem, r'temp_([\d.]+)', default=0),
-                    Zabsphi=df[['frequency', 'Zabs', 'phi']].to_numpy(),
                     Zabsphi_df = df  # Store the data frame for debugging
                 )
                 
@@ -302,10 +315,11 @@ class SolatronIS(ImpedanceData):
                     measurement = ISdata(
                         file_name =str(fi.name),
                         run_number =int(run_number),
+                        Zabsphi= df_sweep[['frequency', 'Zabs', 'phi']].to_numpy(),
+                        folder_path = self.folder_path,
                         DC_offset = df_sweep['DC Level (V)'].iloc[0], # Extract the DC level from the first row of the sweep
                         V_rms = df_sweep['AC Level (V)'].iloc[0], # Extract the AC level from the first row of the sweep
                         Temperature = temperature_kelvin,
-                        Zabsphi= df_sweep[['frequency', 'Zabs', 'phi']].to_numpy(),
                         Zabsphi_df = df_sweep,  # Store the data frame for debugging
                         res_state = self._extract_string(fi.stem, ('pristine, electroformed, doubleformed, formed'), default=None), #finds first match for state in tuple
                         vac_state = self._extract_string(fi.stem, ('vacuum', 'ambient', 'vac'), default=None), #finds first match for state in tuple

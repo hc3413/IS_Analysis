@@ -50,7 +50,7 @@ def IS_plot(
     if d_type in ['colecole', 'modmod']:
         fig, ax = plt.subplots(1, 1, figsize=fig_size, constrained_layout=True)
     else:
-        double_fig_size = (fig_size[0], fig_size[1] / 2)  # Adjusted for two subplots
+        double_fig_size = (fig_size[0]*2, fig_size[1])  # Adjusted for two subplots
         fig, ax = plt.subplots(1, 2, figsize=double_fig_size, constrained_layout=True)
 
     # Ensure ax is always iterable
@@ -111,7 +111,7 @@ def IS_plot(
         cmap, norm, min_val, max_val = generate_colormaps_and_normalizers(group, c_bar)
 
         # Add a legend entry for the group using the run number of the first item
-        group_legend_entries.append((f"Run {group[0].run_number}", linestyle))
+        group_legend_entries.append((f"{group[0].plot_string}", linestyle))
 
         for i, measurement in enumerate(group):
             plot_string = measurement.plot_string  # Label for legend
@@ -286,7 +286,7 @@ def IS_plot(
             plt.Line2D([0], [0], color='black', linestyle=linestyle, label=label)
             for label, linestyle in group_legend_entries
         ]
-        ax[0].legend(handles=group_handles, loc='best')
+        ax[0].legend(handles=group_handles)
 
     elif c_bar == 0 or force_key:  # Default legend behavior
         handles, labels = ax[0].get_legend_handles_labels()
@@ -314,6 +314,28 @@ def run_to_dict(data_in):
         # append the measurement to the list for that run number
         data_dict[measurement.run_number].append(measurement)
     return data_dict
+
+
+def update_plot_string(data_in, export_data=False, plot_labels = None):
+    '''Update the plot_str variable for each file in the tuple.
+      update only the first measurement in the list which is the one actually outputted in the plot'''
+    if export_data:
+        for i, list in enumerate(data_in, start=0):
+            
+            # Manual input if no plot_labels provided
+            if plot_labels is None:
+                new_plot_str = input(f"Enter new plot string for {list[0].file_name} (current: {list[0].plot_string}): ")
+                list[0].plot_string = new_plot_str if new_plot_str else list[0].plot_string
+                print(f"New plot string for {list[0].file_name}: {list[0].plot_string}")
+            
+            # Automatic input if plot_labels provided
+            else:
+                list[0].plot_string = plot_labels[i]
+                
+        return data_in
+    
+    else:
+        return data_in # Do nothing and exit the function
 
 
 

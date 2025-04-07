@@ -30,7 +30,7 @@ def set_plot_style(export_data = False, powerpoint_data = False, use_tex=True):
         'figure.figsize':fig_size,
         'savefig.bbox': 'tight',
         'savefig.pad_inches': 0.05,
-        'figure.constrained_layout.use': True, # Enable constrained layout by default
+        'figure.constrained_layout.use': False, # Enable constrained layout by default
         
         # Font and text settings
         'font.family': ['serif'],
