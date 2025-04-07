@@ -76,7 +76,7 @@ def IS_plot(
     ylabels = titles[d_type]
 
     # Default color cycle if no colorbar
-    if not c_bar:
+    if c_bar == 0:
         # Use the default prop_cycle defined in your style
         prop_cycle = plt.rcParams['axes.prop_cycle']
         colors = prop_cycle.by_key()['color']
@@ -337,11 +337,25 @@ def update_plot_string(data_in, export_data=False, plot_labels = None):
     else:
         return data_in # Do nothing and exit the function
     
-    
+def extract_single_dc(data_in, DC_val = 0):
+    '''Extract a single DC offset from the data and return it
+    Do this for each list within the combined list for plotting'''
+    dat_filt = []
+    for run in data_in:
+        run_filt = []
+        for measurement in run:
+            if measurement.DC_offset == DC_val:
+                # Append the measurement to the list
+                run_filt.append(measurement)
+        # Append the filtered run to the main list
+        dat_filt.append(run_filt)
+    return dat_filt
+
+
+
+
+
 # Define a function for the PPTX module to add a slide with a title and image
-
-
-
 # --- Define the standard font for the slide (consistent usage) ---
 SLIDE_FONT = "Avenir" # Note: Ensure this font is available on the system running the code AND the system viewing the PPTX
 
@@ -457,7 +471,7 @@ def add_slide(fig, title, notes, prs, path_out):
         return
 
     # --- Add the image to the slide ---
-    img_top = title_box_height + Inches(0.2)
+    img_top = title_box_height + Inches(0.25)
     slide_height = prs.slide_height
     max_img_height = slide_height - img_top - Inches(0.25)
     img_width = slide_width * 0.9
