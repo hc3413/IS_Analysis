@@ -344,7 +344,7 @@ def extract_single_dc(data_in, DC_val = 0):
     for run in data_in:
         run_filt = []
         for measurement in run:
-            if measurement.DC_offset == DC_val:
+            if round(measurement.DC_offset, 2) == round(DC_val, 2):
                 # Append the measurement to the list
                 run_filt.append(measurement)
         # Append the filtered run to the main list
