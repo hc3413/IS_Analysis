@@ -163,6 +163,8 @@ def fit_impedance_data(
                        # fixed_params = {'R_series': 55.0}
                        # fixed_params = {'C_pad': 1.2e-11, 'alpha1': 0.9}
     plot_fit=True, # If True, display the Bode plot of the fit after completion.
+    plot_type = 'Zabsphi', # Plot type: 'Zrealimag' or 'Zabsphi'
+    fig_size: tuple = (3.5, 2.625), # Base size of the figure
     use_de=True, # If True, perform Differential Evolution before Least Squares.
     de_bounds_dict=None, # Dictionary mapping param names to (min, max) tuples for DE search space.
                          # If None, uses broad internal defaults. More specific bounds recommended.
@@ -179,8 +181,13 @@ def fit_impedance_data(
                              # Only used if use_de=False OR if DE fails. If None, uses auto-guess.
                              # initial_guess_dict = {'R_mem1': 5e7, 'C_mem1': 5e-11, 'R_mem2': 1e5, 'C_mem2': 1e-9, 'C_pad': 2e-11, 'R_series': 70.0,
                                                     # 'Q1': 4e-11, 'alpha1': 0.92, 'Q2': 5e-10, 'alpha2': 0.85}
-    de_maxiter=500, # Max generations (iterations) for Differential Evolution.
-    ls_max_nfev=3000 # Max function evaluations for Least Squares.
+    de_maxiter=1500, # Max generations (iterations) for Differential Evolution.
+    ls_max_nfev=10000, # Max function evaluations for Least Squares.
+    de_popsize=80, # Population size for Differential Evolution.
+    de_tol=1e-4, # Tolerance for Differential Evolution.
+    ls_ftol=1e-12, # Tolerance for Least Squares (ftol).
+    ls_xtol=1e-12, # Tolerance for Least Squares (xtol).
+    ls_gtol=1e-12, # Tolerance for Least Squares (gtol).
     ):
     """
     Fits impedance data to a specified equivalent circuit model using
@@ -229,11 +236,13 @@ def fit_impedance_data(
     print(f"Free parameters to fit: {free_param_names}")
     if not free_param_names:
         print("Warning: All parameters are fixed. Cannot perform fit.")
-        # Calculate model with fixed params and store? Or just return?
+        # Calculate model with fixed params and store
         try:
+             frequency_raw = data_obj.Zrealimag[:, 0].copy()
              fixed_vals_vector = [fixed_params[name] for name in param_order]
              Z_complex_fit_full = unified_circuit_model(fixed_vals_vector, frequency_raw, model_type)
-             data_obj.Zcomplex_fit = np.column_stack((frequency_raw, Z_complex_fit_full.real, Z_complex_fit_full.imag))
+             # Store as (freq, Z) where Z is complex
+             data_obj.Zcomplex_fit = np.column_stack((frequency_raw, Z_complex_fit_full))
              data_obj.Z_parameters = {name:fixed_params.get(name) for name in PARAM_ORDERS['CPE2']} # Store in full structure
              print("Stored model curve based on fixed parameters.")
              return fixed_params, True # Return fixed params, indicate success as calculation done
@@ -322,7 +331,7 @@ def fit_impedance_data(
                  de_result = differential_evolution(
                     cost_function_de, bounds=de_bounds_free,
                     args=(frequency, Z_measured, model_type, param_order, fixed_params_map),
-                    strategy='best1bin', maxiter=de_maxiter, popsize=15, tol=0.01,
+                    strategy='best1bin', maxiter=de_maxiter, popsize=de_popsize, tol=de_tol,
                     mutation=(0.5, 1), recombination=0.7, updating='immediate', disp=False)
             if de_result.success:
                 print("DE finished successfully.")
@@ -372,7 +381,7 @@ def fit_impedance_data(
             residuals_ls_weighted, ls_initial_guess,
             args=(frequency, Z_measured, model_type, param_order, fixed_params_map),
             bounds=ls_bounds_free, method='trf',
-            ftol=1e-10, xtol=1e-10, gtol=1e-10, max_nfev=ls_max_nfev)
+            ftol=ls_ftol, xtol=ls_xtol, gtol=ls_gtol, max_nfev=ls_max_nfev)
 
         if ls_result.success:
             ls_success = True
@@ -408,7 +417,8 @@ def fit_impedance_data(
                 fitted_params_full_vector = [final_fitted_params_dict[name] for name in param_order]
                 if frequency_raw is not None and len(frequency_raw) > 0:
                      Z_complex_fit_full = unified_circuit_model(fitted_params_full_vector, frequency_raw, model_type)
-                     data_obj.Zcomplex_fit = np.column_stack((frequency_raw, Z_complex_fit_full.real, Z_complex_fit_full.imag))
+                     # Store as (freq, Z) where Z is complex
+                     data_obj.Zcomplex_fit = np.column_stack((frequency_raw, Z_complex_fit_full))
                      print("Stored extrapolated fit curve in data_obj.Zcomplex_fit")
                 else: Z_complex_fit_full = None # Indicate calc failed for plot
             except Exception as e_fitcurve:
@@ -418,13 +428,12 @@ def fit_impedance_data(
 
             # --- Plotting ---
             if plot_fit:
-                # ... (Plotting code remains largely the same, ensure it handles Z_complex_fit_full == None) ...
-                 # --- Plotting ---
                 if Z_complex_fit_full is not None: # Only plot if fit curve was calculated
                     fit_label = f"{model_type} Fit (LS)"
                     if use_de: fit_label = f"{model_type} Fit (DE+LS)"
 
-                    fig, ax = plt.subplots(1, 2, figsize=(12, 5), sharex=True)
+                    double_fig_size = (fig_size[0]*2, fig_size[1])  # Adjusted for two subplots
+                    fig, ax = plt.subplots(1, 2, figsize=double_fig_size, sharex=True, constrained_layout=True)
                     scale_factor = 1 # No scaling initially, adjust if needed based on data
                     y_unit_prefix = ""
                     # Auto-detect scale based on max Z'
@@ -433,17 +442,59 @@ def fit_impedance_data(
                     elif max_z_real > 2e3: scale_factor = 1e3; y_unit = r"k$\Omega$"
                     else: scale_factor = 1; y_unit = r"$\Omega$"
 
+                    if plot_type == 'Zrealimag':
+                        # measured data over full range
+                        y1_measured_raw = Z_measured_raw.real / scale_factor
+                        y2_measured_raw = -Z_measured_raw.imag / scale_factor
+                        x_measured_raw = frequency_raw
+                        
+                        # measured data over fitted range
+                        y1_measured = Z_measured.real / scale_factor
+                        y2_measured = -Z_measured.imag / scale_factor
+                        x_measured = frequency
+                        
+                        # fitted data
+                        y1_fit = Z_complex_fit_full.real / scale_factor
+                        y2_fit = -Z_complex_fit_full.imag / scale_factor
+                        x_fit = frequency_raw
+                        
+                        ax[0].set_ylabel(f"$Z'$ ({y_unit})")
+                        ax[1].set_ylabel(f"$-Z''$ ({y_unit})")
+                        
+                    elif plot_type == 'Zabsphi':
+                        # measured data over full range
+                        y1_measured_raw = np.abs(Z_measured_raw) / scale_factor
+                        y2_measured_raw = np.angle(Z_measured_raw, deg=True)
+                        x_measured_raw = frequency_raw
+                        
+                        # measured data over fitted range
+                        y1_measured = np.abs(Z_measured) / scale_factor
+                        y2_measured = np.angle(Z_measured, deg=True)
+                        x_measured = frequency
+                        
+                        # fitted data
+                        y1_fit = np.abs(Z_complex_fit_full) / scale_factor
+                        y2_fit = np.angle(Z_complex_fit_full, deg=True)
+                        x_fit = frequency_raw
+                        
+                        ax[0].set_ylabel(f"$|Z|$ ({y_unit})")
+                        ax[1].set_ylabel(r"Phase ($^{\circ}$)")
+                    
+                    # measured full range
+                    ax[0].plot(x_measured_raw, y1_measured_raw, 'o', ms=3, color='lightgrey', label='_nolegend_')
+                    ax[1].plot(x_measured_raw, y2_measured_raw, 'o', ms=3, color='lightgrey', label='_nolegend_')
+                    
+                    #measured fitted range
+                    ax[0].plot(x_measured, y1_measured, 'o', ms=5, label='Measured (used)')
+                    ax[1].plot(x_measured, y2_measured, 'o', ms=5, label='Measured (used)')
+                    
+                    # Fitted 
+                    ax[0].plot(x_fit, y1_fit, '-', lw=2, label=fit_label)
+                    ax[1].plot(x_fit, y2_fit, '-', lw=2, label=fit_label)
 
-                    ax[0].plot(frequency_raw, Z_measured_raw.real / scale_factor, 'o', ms=3, color='lightgrey', label='_nolegend_')
-                    ax[1].plot(frequency_raw, -Z_measured_raw.imag / scale_factor, 'o', ms=3, color='lightgrey', label='_nolegend_')
-                    ax[0].plot(frequency, Z_measured.real / scale_factor, 'o', ms=5, label='Measured (used)')
-                    ax[1].plot(frequency, -Z_measured.imag / scale_factor, 'o', ms=5, label='Measured (used)')
-                    ax[0].plot(frequency_raw, Z_complex_fit_full.real / scale_factor, '-', lw=2, label=fit_label)
-                    ax[1].plot(frequency_raw, -Z_complex_fit_full.imag / scale_factor, '-', lw=2, label=fit_label)
-
-                    ax[0].set_ylabel(f"Z' ({y_unit})"); ax[0].set_xlabel("Frequency (Hz)"); ax[0].grid(True, which='both'); ax[0].legend(); ax[0].set_title("Real Part")
+                    ax[0].set_xlabel("Frequency (Hz)"); ax[0].legend()
                     ax[0].set_xlim(min(frequency_raw)*0.8, max(frequency_raw)*1.2); ax[0].set_xscale('log'); ax[0].set_yscale('log') # Log scale Y for Z'
-                    ax[1].set_ylabel(f"-Z'' ({y_unit})"); ax[1].set_xlabel("Frequency (Hz)"); ax[1].grid(True, which='both'); ax[1].legend(); ax[1].set_title("Imaginary Part (Negative)")
+                    ax[1].set_xlabel("Frequency (Hz)"); ax[1].legend()
                     # ax[1].set_yscale('log') # Often better linear for -Z'' peak
 
                     title_note = ""
@@ -452,21 +503,25 @@ def fit_impedance_data(
                     if fixed_params: title_note += f" Fixed: {fixed_params}"
                     plot_string_val = getattr(data_obj, 'plot_string', 'Unknown Data')
                     if plot_string_val is None: plot_string_val = 'Unknown Data'
-                    fig.suptitle(f'Bode Plot - {fit_label} for {plot_string_val}{title_note}', fontsize=12)
-                    plt.tight_layout(rect=[0, 0.03, 1, 0.93]); plt.show()
+                    fig.suptitle(f'{fit_label} for {plot_string_val}{title_note}')
+                    plt.show()
                 else:
                      print("Skipping plot: Failed to calculate final fit curve.")
+
+                print("\nFinal Fitted Parameters Dictionary:")
+                print(final_fitted_params_dict)
 
 
         else: # LS failed
             print(f"Least Squares refinement failed: {ls_result.message}")
             ls_success = False
 
+
     except ValueError as ve: print(f"ValueError during LS: {ve}"); ls_success = False
     except Exception as e: print(f"Unexpected error during LS: {e}"); ls_success = False
 
     print(f"--- Fit finished for: {getattr(data_obj, 'plot_string', 'Unknown Data')} ---")
-    return final_fitted_params_dict, ls_success
+    return fig, ax
 
 
 

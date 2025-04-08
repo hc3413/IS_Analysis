@@ -33,6 +33,7 @@ def IS_plot(
     med_filt: int = 0, # 0 = no median filter, x = size of the median filter
     force_key: bool = False, # Force a key to be created even if c_bar is activated
     freq_lim: tuple = None, # Frequency limits for limiting data in colecole and modmod plot
+    fitting: bool = False, # Plot the fitted data along with the measured data
 ):
     '''Plotting function for impedance data using constrained_layout for consistency.
 
@@ -297,6 +298,362 @@ def IS_plot(
             ax[1].legend(handles, labels)
 
     # Layout and show (constrained_layout handles adjustments before showing)
+    plt.show()
+
+    return fig, ax
+
+
+
+def IS_plot_fit(
+    data_in: list,
+    d_type: str,
+    x_lim: tuple = None,
+    y_lim_left: tuple = None, # limit for the left plot y axis
+    y_lim_right: tuple = None, # limit for the right plot y axis
+    sort_data: bool = True, # Order the data by temperature and DC offset
+    fig_size: tuple = (3.5, 2.625), # Base size of the figure
+    med_filt: int = 0, # 0 = no median filter, x = size of the median filter
+    show_key: bool = True, # Show key/legend - changed default to True to show parameters
+    freq_lim: tuple = None, # Frequency limits for limiting data in colecole and modmod plot
+):
+    '''Plotting function for impedance data with fitted model curves using constrained_layout.
+    
+    This function always shows measured data as points and fitted data as lines.
+
+    data_in: list - the list of Measurement class data to plot
+    d_type: str - the type of data to plot: 'Zabsphi', 'Zrealimag', 'permittivity', 'tandelta', 'modulus'
+    fig_size: tuple - Desired base figure size. Constrained layout might adjust slightly.
+    '''
+
+    if not data_in:
+        print("No data to plot")
+        return None, None
+
+    # --- Create Figure and Axes using constrained_layout ---
+    if d_type in ['colecole', 'modmod']:
+        fig, ax = plt.subplots(1, 1, figsize=fig_size, constrained_layout=True)
+    else:
+        double_fig_size = (fig_size[0]*2, fig_size[1])  # Adjusted for two subplots
+        fig, ax = plt.subplots(1, 2, figsize=double_fig_size, constrained_layout=True)
+
+    # Ensure ax is always iterable
+    if not isinstance(ax, np.ndarray):
+        ax = np.array([ax])
+
+    # Titles and labels
+    titles = {
+        'Zabsphi': (r"$|Z|\,(\Omega)$", r"Phase ($^{\circ}$)"),
+        'Zrealimag': (r"$Z'\,(\Omega)$", r"$-Z''\,(\Omega)$"),
+        'permittivity': (r"$\varepsilon'$", r"$\varepsilon''$"),
+        'tandelta': (r"$\sigma$ (S/m)", r"$\tan\delta$"), 
+        'modulus': (r"$M'$", r"$M''$"),
+        'colecole': (r"$Z'$", r"$-Z''$"), 
+        'modmod': (r"$M'$", r"$-M''$"), 
+    }
+
+    if d_type not in titles:
+        print(f"Error: Invalid data type '{d_type}'. Valid types are: {list(titles.keys())}")
+        plt.close(fig)
+        return None, None
+
+    ylabels = titles[d_type]
+
+    # Default color cycle for data
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+
+    # Define linestyles for different sublists
+    linestyles = ['-', ':','--', '-.']
+
+    # Check if data_in is a list of lists
+    if isinstance(data_in[0], list):
+        data_groups = data_in  # Treat each sublist as a group
+    else:
+        data_groups = [data_in]  # Wrap single list into a group for uniform handling
+
+    # --- Plotting Loop ---
+    plotted_lines_left = []  # For legend handles
+    plotted_lines_right = []
+    group_legend_entries = []  # To store legend entries for groups
+
+    for group_idx, group in enumerate(data_groups):
+        linestyle = linestyles[group_idx % len(linestyles)]  # Cycle through linestyles
+
+        # Sort data within the group if enabled
+        if sort_data:
+            group.sort(key=lambda m: (
+                0 if m.Temperature is not None else 1,
+                round(m.Temperature, -1) if m.Temperature is not None else float('inf'),
+                0 if m.DC_offset is not None else 1,
+                m.DC_offset if m.DC_offset is not None else float('inf')
+            ))
+
+        # Add a legend entry for the group using the run number of the first item
+        group_legend_entries.append((f"{group[0].plot_string}", linestyle))
+
+        for i, measurement in enumerate(group):
+            plot_string = measurement.plot_string  # Original label
+            has_fit_data = hasattr(measurement, 'Zcomplex_fit') and measurement.Zcomplex_fit is not None
+            
+            if not has_fit_data:
+                print(f"Warning: No fitted data found for {plot_string}. Skipping.")
+                continue
+                
+            # Create formatted parameter string for the plot label
+            param_string = ""
+            if hasattr(measurement, 'Z_parameters') and measurement.Z_parameters is not None:
+                params = measurement.Z_parameters
+                # Format only non-None parameters with scientific notation for clarity
+                param_entries = []
+                
+                # Handle RC circuit parameters
+                if params.get('R_mem1') is not None:
+                    param_entries.append(f"R1={params['R_mem1']:.1e}")
+                if params.get('C_mem1') is not None:
+                    param_entries.append(f"C1={params['C_mem1']:.1e}")
+                
+                # Handle RC2 circuit parameters
+                if params.get('R_mem2') is not None:
+                    param_entries.append(f"R2={params['R_mem2']:.1e}")
+                if params.get('C_mem2') is not None:
+                    param_entries.append(f"C2={params['C_mem2']:.1e}")
+                
+                # Handle CPE parameters
+                if params.get('Q1') is not None:
+                    param_entries.append(f"Q1={params['Q1']:.1e}")
+                if params.get('alpha1') is not None:
+                    param_entries.append(f"α1={params['alpha1']:.2f}")
+                if params.get('Q2') is not None:
+                    param_entries.append(f"Q2={params['Q2']:.1e}")
+                if params.get('alpha2') is not None:
+                    param_entries.append(f"α2={params['alpha2']:.2f}")
+                
+                # Handle common parameters
+                if params.get('R_series') is not None:
+                    param_entries.append(f"Rs={params['R_series']:.1e}")
+                if params.get('C_pad') is not None:
+                    param_entries.append(f"Cp={params['C_pad']:.1e}")
+                    
+                param_string = ", ".join(param_entries)
+            
+            # Create the new labels with run number and parameters
+            run_num = f"run={measurement.run_number}" if hasattr(measurement, 'run_number') else "unknown"
+            measured_label = f"{run_num}"
+            fit_label = f"{run_num}: {param_string}"
+
+            # --- Data Extraction for Measured Data ---
+            if d_type == 'Zabsphi':
+                data = measurement.Zabsphi
+                x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]
+                ax[0].set_yscale('log')
+            elif d_type == 'Zrealimag':
+                data = measurement.Zrealimag
+                x, y1, y2 = data[:, 0], data[:, 1], -data[:, 2]
+                ax[0].set_yscale('log')
+            elif d_type == 'permittivity':
+                data = measurement.permittivity
+                x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]
+            elif d_type == 'tandelta':
+                cond_data = measurement.conductivity
+                tan_delta_data = measurement.tandelta
+                x, y1, y2 = cond_data[:, 0], cond_data[:, 1], tan_delta_data[:, 1]
+                ax[0].set_yscale('log')
+            elif d_type == 'modulus':
+                data = measurement.modulus
+                x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]
+            elif d_type == 'colecole':
+                data = measurement.Zrealimag
+                x, y1, y2 = data[:, 1], -data[:, 2], data[:, 0]  # y2 contains frequency for filtering
+            elif d_type == 'modmod':
+                data = measurement.modulus
+                x, y1, y2 = data[:, 1], -data[:, 2], data[:, 0]  # y2 contains frequency for filtering
+            
+
+            # --- Extract Fitted Data ---
+            fit_freq = measurement.Zcomplex_fit[:, 0]
+            fit_complex = measurement.Zcomplex_fit[:, 1]
+            
+            # Calculate the appropriate data based on d_type
+            if d_type == 'Zabsphi':
+                fit_y1 = np.abs(fit_complex)
+                fit_y2 = np.angle(fit_complex, deg=True)
+            elif d_type == 'Zrealimag':
+                fit_y1 = fit_complex.real
+                fit_y2 = -fit_complex.imag
+            elif d_type == 'permittivity':
+                eps0 = 8.854e-12
+                Cap_0 = eps0*((20e-6)**2)/(30e-9)
+                omega = 2 * np.pi * fit_freq
+                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
+                fit_y1 = np.real(epsilon)
+                fit_y2 = -np.imag(epsilon)
+            elif d_type == 'tandelta':
+                eps0 = 8.854e-12
+                Cap_0 = eps0*((20e-6)**2)/(30e-9)
+                omega = 2 * np.pi * fit_freq
+                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
+                epsilon_real = np.real(epsilon)
+                epsilon_imag = -np.imag(epsilon)
+                tandelta = epsilon_imag / (epsilon_real + 1e-20)
+                fit_y1 = omega * eps0 * epsilon_imag  # Conductivity
+                fit_y2 = tandelta
+            elif d_type == 'modulus':
+                eps0 = 8.854e-12
+                Cap_0 = eps0*((20e-6)**2)/(30e-9)
+                omega = 2 * np.pi * fit_freq
+                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
+                modulus = 1/epsilon
+                fit_y1 = np.real(modulus)
+                fit_y2 = np.imag(modulus)
+            elif d_type == 'colecole':
+                fit_y1 = fit_complex.real
+                fit_y2 = -fit_complex.imag
+            elif d_type == 'modmod':
+                eps0 = 8.854e-12
+                Cap_0 = eps0*((20e-6)**2)/(30e-9)
+                omega = 2 * np.pi * fit_freq
+                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
+                modulus = 1/epsilon
+                fit_y1 = np.real(modulus)
+                fit_y2 = -np.imag(modulus)
+            
+            # Store the x values for the fit
+            fit_x = fit_freq.copy()
+            fit_x1, fit_x2 = fit_x.copy(), fit_x.copy()
+
+            # --- Apply Median Filter (only to measured data) ---
+            if med_filt > 0:
+                y1 = medfilt(y1, kernel_size=med_filt)
+                y2 = medfilt(y2, kernel_size=med_filt)
+
+            # --- Masking for limits - measured data ---
+            # Remove NaN values
+            valid_mask = ~np.isnan(x) & ~np.isnan(y1) & ~np.isnan(y2)
+            x, y1, y2 = x[valid_mask], y1[valid_mask], y2[valid_mask]
+
+            # X-axis limits
+            if x_lim:
+                x_mask = (x >= x_lim[0]) & (x <= x_lim[1])
+                x, y1, y2 = x[x_mask], y1[x_mask], y2[x_mask]
+                
+                # Apply same limits to fitted data
+                fit_x_mask = (fit_x >= x_lim[0]) & (fit_x <= x_lim[1])
+                fit_x = fit_x[fit_x_mask]
+                fit_y1 = fit_y1[fit_x_mask]
+                fit_y2 = fit_y2[fit_x_mask]
+                fit_x1, fit_x2 = fit_x.copy(), fit_x.copy()
+
+            # Create separate copies for y-axis masking
+            x1, x2 = x.copy(), x.copy()
+
+            # Y-axis left limits
+            if y_lim_left:
+                y1_mask = (y1 >= y_lim_left[0]) & (y1 <= y_lim_left[1])
+                x1_masked, y1_masked = x1[y1_mask], y1[y1_mask]
+                
+                fit_y1_mask = (fit_y1 >= y_lim_left[0]) & (fit_y1 <= y_lim_left[1])
+                fit_x1_masked, fit_y1_masked = fit_x1[fit_y1_mask], fit_y1[fit_y1_mask]
+            else:
+                x1_masked, y1_masked = x1, y1
+                fit_x1_masked, fit_y1_masked = fit_x1, fit_y1
+
+            # Y-axis right limits
+            if y_lim_right:
+                y2_mask = (y2 >= y_lim_right[0]) & (y2 <= y_lim_right[1])
+                x2_masked, y2_masked = x2[y2_mask], y2[y2_mask]
+                
+                if d_type not in ['colecole', 'modmod']:
+                    fit_y2_mask = (fit_y2 >= y_lim_right[0]) & (fit_y2 <= y_lim_right[1])
+                    fit_x2_masked, fit_y2_masked = fit_x2[fit_y2_mask], fit_y2[fit_y2_mask]
+            else:
+                x2_masked, y2_masked = x2, y2
+                fit_x2_masked, fit_y2_masked = fit_x2, fit_y2
+                
+            # Frequency limits for Cole-Cole and ModMod plots
+            if d_type in ['colecole', 'modmod'] and freq_lim:
+                freq_mask = (y2 >= freq_lim[0]) & (y2 <= freq_lim[1])
+                x1_masked, y1_masked = x1[freq_mask], y1[freq_mask]
+                
+                fit_freq_mask = (fit_x >= freq_lim[0]) & (fit_x <= freq_lim[1])
+                fit_x1_masked, fit_y1_masked = fit_x1[fit_freq_mask], fit_y1[fit_freq_mask]
+                fit_y2_masked = fit_y2[fit_freq_mask]
+            elif freq_lim:
+                freq_mask = (x2 >= freq_lim[0]) & (x2 <= freq_lim[1])
+                x1_masked, x2_masked, y1_masked, y2_masked = x1[freq_mask], x2[freq_mask], y1[freq_mask], y2[freq_mask]
+                
+                fit_freq_mask = (fit_x >= freq_lim[0]) & (fit_x <= freq_lim[1])
+                fit_x1_masked, fit_x2_masked = fit_x1[fit_freq_mask], fit_x2[fit_freq_mask]
+                fit_y1_masked, fit_y2_masked = fit_y1[fit_freq_mask], fit_y2[fit_freq_mask]
+
+            # Skip plotting if no data remains after masking
+            if x1_masked.size == 0 and x2_masked.size == 0:
+                print(f"Warning: No data points left for {plot_string} after applying limits.")
+                continue
+
+            # --- Determine Color ---
+            color = colors[i % len(colors)]  # Cycle through default colors
+
+            # --- Set Plot Labels ---
+            measured_label = plot_string
+            
+            # --- Plot Data ---
+            # Cole-Cole and ModMod plots
+            if d_type in ['colecole', 'modmod']:
+                # Measured data as circles
+                line1 = ax[0].plot(x1_masked, y1_masked, 'o', ms=4, 
+                                  label=measured_label, color=color)
+                plotted_lines_left.extend(line1)
+                
+                # Fitted data as solid lines
+                ax[0].plot(fit_y1_masked, fit_y2_masked, '-', lw=1.5,
+                          label=fit_label, color=color)
+            
+            # Standard plots (Bode plots, etc.)
+            else:
+                # Measured data as circles
+                line1 = ax[0].semilogx(x1_masked, y1_masked, 'o', ms=3, alpha = 0.2, color=color)
+                plotted_lines_left.extend(line1)
+                
+                line2 = ax[1].semilogx(x2_masked, y2_masked, 'o', ms=3, alpha = 0.2, color=color)
+                plotted_lines_right.extend(line2)
+                
+                # Fitted data as solid lines
+                ax[0].semilogx(fit_x1_masked, fit_y1_masked, '--', lw=1.5, alpha = 1,
+                              label=fit_label, color=color)
+                ax[1].semilogx(fit_x2_masked, fit_y2_masked, '--', lw=1.5, alpha = 1,
+                              label=fit_label, color=color)
+
+    # --- Axis Labels and Limits ---
+    if d_type in ['colecole', 'modmod']:
+        ax[0].set_xlabel(ylabels[0])
+        ax[0].set_ylabel(ylabels[1])
+        ax[0].axis('equal')
+    else:
+        ax[0].set_xlabel('Frequency (Hz)')
+        ax[1].set_xlabel('Frequency (Hz)')
+        ax[0].set_ylabel(ylabels[0])
+        ax[1].set_ylabel(ylabels[1])
+
+    # Apply limits AFTER plotting and AFTER setting scale
+    if x_lim:
+        ax[0].set_xlim(x_lim)
+        if len(ax) > 1:
+            ax[1].set_xlim(x_lim)
+    if y_lim_left:
+        ax[0].set_ylim(y_lim_left)
+    if y_lim_right and len(ax) > 1:
+        ax[1].set_ylim(y_lim_right)
+        
+    # --- Legends ---
+    if show_key:  # Only show legend if explicitly requested
+        handles, labels = ax[0].get_legend_handles_labels()
+        ax[0].legend(handles, labels)
+
+        if len(ax) > 1:
+            handles, labels = ax[1].get_legend_handles_labels()
+            ax[1].legend(handles, labels)
+
+    # Layout and show
     plt.show()
 
     return fig, ax

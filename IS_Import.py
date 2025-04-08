@@ -31,7 +31,7 @@ class ISdata:
     modulus: np.ndarray = None  # (frequency, modulus, phase), computed later
     
     # Fitted data attributes
-    Zcomplex_fit: np.ndarray = None  # (frequency, Zabs, phi), fitted by a model
+    Zcomplex_fit: np.ndarray = None  # (frequency, Zcomplex), fitted by a model
     Z_parameters: dict = None  # Fitted parameters from the model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad, Q1, Q2, alpha1, alpha2 )
     
     # Tuple storing the data frames of the imported data for debugging
