@@ -32,6 +32,7 @@ def IS_plot(
     c_bar: int = 0, # 0 = no colorbar, 1 = temperature, 2 = DC_offset
     med_filt: int = 0, # 0 = no median filter, x = size of the median filter
     force_key: bool = False, # Force a key to be created even if c_bar is activated
+    show_key: bool = True, # Show key/legend - changed default to True to show parameters
     freq_lim: tuple = None, # Frequency limits for limiting data in colecole and modmod plot
     fitting: bool = False, # Plot the fitted data along with the measured data
 ):
@@ -113,6 +114,8 @@ def IS_plot(
 
         # Add a legend entry for the group using the run number of the first item
         group_legend_entries.append((f"{group[0].plot_string}", linestyle))
+        
+        
 
         for i, measurement in enumerate(group):
             plot_string = measurement.plot_string  # Label for legend
@@ -282,20 +285,21 @@ def IS_plot(
         
         
     # --- Legends ---
-    if c_bar != 0 and not force_key and len(data_groups)>1 :  # Add group legend when colorbar is enabled and force_key is disabled
-        group_handles = [
-            plt.Line2D([0], [0], color='black', linestyle=linestyle, label=label)
-            for label, linestyle in group_legend_entries
-        ]
-        ax[0].legend(handles=group_handles)
+    if show_key:  # Show legend if enabled
+        if c_bar != 0 and not force_key and len(data_groups)>1 :  # Add group legend when colorbar is enabled and force_key is disabled
+            group_handles = [
+                plt.Line2D([0], [0], color='black', linestyle=linestyle, label=label)
+                for label, linestyle in group_legend_entries
+            ]
+            ax[0].legend(handles=group_handles)
 
-    elif c_bar == 0 or force_key:  # Default legend behavior
-        handles, labels = ax[0].get_legend_handles_labels()
-        ax[0].legend(handles, labels)  # Customize further if needed
+        elif c_bar == 0 or force_key:  # Default legend behavior
+            handles, labels = ax[0].get_legend_handles_labels()
+            ax[0].legend(handles, labels)  # Customize further if needed
 
-        if len(ax) > 1:
-            handles, labels = ax[1].get_legend_handles_labels()
-            ax[1].legend(handles, labels)
+            if len(ax) > 1:
+                handles, labels = ax[1].get_legend_handles_labels()
+                ax[1].legend(handles, labels)
 
     # Layout and show (constrained_layout handles adjustments before showing)
     plt.show()
@@ -361,6 +365,9 @@ def IS_plot_fit(
     # Default color cycle for data
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
+    # Generate a list of colormaps of single colors for use with multiple groups
+    color_maps = ['Reds', 'Blues', 'Greens', 'Oranges', 'Purples', 'Greys']
+    color_map_iterator = itertools.cycle(color_maps) #makes an iterator object that can be cyled through with next() to get the next color map
 
     # Define linestyles for different sublists
     linestyles = ['-', ':','--', '-.']
@@ -387,6 +394,15 @@ def IS_plot_fit(
                 0 if m.DC_offset is not None else 1,
                 m.DC_offset if m.DC_offset is not None else float('inf')
             ))
+            
+        # If passed a group, then use a new colormap for each group
+        if len(data_groups) > 1:
+            # Generate a list of colors from the colormap
+            color_obj = next(color_map_iterator) #get the first color map to pass as a plotting argument
+            
+            num_colors = len(group) # set number of colors to number of devices within the subset
+            colors = plt.get_cmap(color_obj)(np.linspace(0.2,0.8,num_colors))
+            
 
         # Add a legend entry for the group using the run number of the first item
         group_legend_entries.append((f"{group[0].plot_string}", linestyle))
@@ -403,6 +419,7 @@ def IS_plot_fit(
             param_string = ""
             if hasattr(measurement, 'Z_parameters') and measurement.Z_parameters is not None:
                 params = measurement.Z_parameters
+                DC_offset = measurement.DC_offset
                 # Format only non-None parameters with scientific notation for clarity
                 param_entries = []
                 
@@ -434,11 +451,13 @@ def IS_plot_fit(
                 #if params.get('C_pad') is not None:
                     #param_entries.append(f"Cp={params['C_pad']:.1e}")
                     
+                if DC_offset is not None:
+                    param_entries.append(f"DC={DC_offset:.1f}")
+                    
                 param_string = ", ".join(param_entries)
             
             # Create the new labels with run number and parameters
             run_num = f"run={measurement.run_number}" if hasattr(measurement, 'run_number') else "unknown"
-            measured_label = f"{run_num}"
             fit_label = f"{run_num}: {param_string}"
 
             # --- Data Extraction for Measured Data ---
@@ -591,17 +610,14 @@ def IS_plot_fit(
                 continue
 
             # --- Determine Color ---
-            color = colors[i % len(colors)]  # Cycle through default colors
+            color = colors[i % len(colors)]  # Cycle through colors
 
-            # --- Set Plot Labels ---
-            measured_label = plot_string
             
             # --- Plot Data ---
             # Cole-Cole and ModMod plots
             if d_type in ['colecole', 'modmod']:
                 # Measured data as circles
-                line1 = ax[0].plot(x1_masked, y1_masked, 'o', ms=4, 
-                                  label=measured_label, color=color)
+                line1 = ax[0].plot(x1_masked, y1_masked, 'o', ms=4, color=color)
                 plotted_lines_left.extend(line1)
                 
                 # Fitted data as solid lines

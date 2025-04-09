@@ -7,6 +7,7 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import readline
+import itertools
 
 # Data manipulation and analysis
 import numpy as np

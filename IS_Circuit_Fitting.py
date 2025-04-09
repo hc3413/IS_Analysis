@@ -173,13 +173,13 @@ def fit_impedance_data(
     de_bounds_dict=None, 
     ls_bounds_dict=None, 
     initial_guess_dict=None,
-    de_maxiter=500, 
-    de_popsize=15, 
-    de_tol=0.01,
+    de_maxiter=5000, 
+    de_popsize=100, 
+    de_tol=1e-5,
     ls_max_nfev=3000, 
-    ls_ftol=1e-9, 
-    ls_xtol=1e-9, 
-    ls_gtol=1e-9
+    ls_ftol=1e-12, 
+    ls_xtol=1e-12, 
+    ls_gtol=1e-12
     ):
     """
     Fits impedance data to a specified equivalent circuit model...
@@ -290,11 +290,71 @@ def fit_impedance_data(
         if initial_guess_dict: # Try provided dict first
              try: ls_initial_guess = [initial_guess_dict[name] for name in free_param_names]; print(f"Using provided LS guess: {dict(zip(free_param_names, ls_initial_guess))}")
              except KeyError as e: print(f"Warn: Guess missing for '{e}'. Fallback."); ls_initial_guess = None
-        if ls_initial_guess is None: # Midpoint fallback
-            print("Using fallback LS guess (midpoint)...")
-            try: low_b, high_b = ls_bounds_free; ls_initial_guess = [(l+h)/2 if np.isfinite(h) else (l*10 if l>0 else 1) for l,h in zip(low_b, high_b)]; print(f"Fallback Guess: {dict(zip(free_param_names, ls_initial_guess))}")
-            except Exception as e_guess: print(f"Error fallback guess: {e_guess}"); return fig, ax, None, False
-
+        
+        if ls_initial_guess is None: # Auto-guess based on data characteristics
+            print("Auto-generating intelligent initial guess for LS...")
+            
+            # Extract key impedance characteristics from data
+            try:
+                # Estimate R_series from high frequency region
+                r_s_guess = np.median(Z_measured.real[frequency > 0.5 * max(frequency)]) if len(frequency)>1 else 10
+                
+                # Estimate R_mem from low frequency region
+                r_mem_guess = np.median(Z_measured.real[frequency < 1.5 * min(frequency)])-r_s_guess if len(frequency)>1 else 1e6
+                
+                # Find frequency at peak imaginary component
+                imag_part = -Z_measured.imag
+                peak_idx = np.argmax(imag_part) if len(imag_part)>0 else 0
+                f_peak = frequency[peak_idx] if len(frequency)>0 else 1e3
+                omega_peak = 2*np.pi*f_peak
+                
+                # Create dictionary of parameter guesses
+                all_guesses = {}
+                all_guesses['R_mem1'] = max(r_mem_guess, 1e-2)  # First membrane resistance
+                all_guesses['R_series'] = max(r_s_guess, 0)     # Series resistance
+                
+                # For CPE-based models
+                if 'CPE' in model_type:
+                    all_guesses['alpha1'] = 0.9
+                    all_guesses['Q1'] = 1/(omega_peak**all_guesses['alpha1'] * all_guesses['R_mem1']) if omega_peak >0 and all_guesses['R_mem1'] > 0 else 1e-10
+                    # For CPE2/CPE3 models with second element
+                    if model_type in ['CPE2', 'CPE3']:
+                        all_guesses['R_mem2'] = all_guesses['R_mem1'] * 0.1  # Second element usually smaller
+                        all_guesses['alpha2'] = 0.8  # Often more dispersive
+                        all_guesses['Q2'] = all_guesses['Q1'] * 0.5  # Different time constant
+                else:
+                    # For RC-based models
+                    c_par_guess = 1/(omega_peak * all_guesses['R_mem1']) if omega_peak>0 and all_guesses['R_mem1']>0 else 1e-11
+                    all_guesses['C_mem1'] = max(c_par_guess * 0.9, 1e-15)
+                    all_guesses['C_pad'] = max(c_par_guess * 0.1, 1e-15)
+                    # For RC2/RC3 models with second element
+                    if model_type in ['RC2', 'RC3']:
+                        all_guesses['R_mem2'] = all_guesses['R_mem1'] * 0.1  # Second element usually smaller
+                        all_guesses['C_mem2'] = all_guesses['C_mem1'] * 0.5  # Different time constant
+                
+                # Fill in the free parameters with guesses or midpoint fallback
+                low_b, high_b = ls_bounds_free
+                ls_initial_guess = []
+                for i, name in enumerate(free_param_names):
+                    if name in all_guesses:
+                        # Use intelligent guess but ensure within bounds
+                        guess_val = min(max(all_guesses[name], low_b[i]), high_b[i])
+                        ls_initial_guess.append(guess_val)
+                    else:
+                        # Fallback to midpoint for any params not in all_guesses
+                        midpoint = (low_b[i]+high_b[i])/2 if np.isfinite(high_b[i]) else (low_b[i]*10 if low_b[i]>0 else 1)
+                        ls_initial_guess.append(midpoint)
+                
+                print(f"Using auto-generated initial guess for LS: {dict(zip(free_param_names, ls_initial_guess))}")
+            except Exception as e_guess:
+                print(f"Error in auto-guess: {e_guess}. Falling back to midpoint...")
+                try: 
+                    low_b, high_b = ls_bounds_free
+                    ls_initial_guess = [(l+h)/2 if np.isfinite(h) else (l*10 if l>0 else 1) for l,h in zip(low_b, high_b)]
+                    print(f"Fallback Guess: {dict(zip(free_param_names, ls_initial_guess))}")
+                except Exception as e_fallback:
+                    print(f"Error fallback guess: {e_fallback}")
+                    return fig, ax, None, False
 
     # --- Stage 2: Refinement with Least Squares ---
     # ... (LS call, result checking, param reconstruction - same as before) ...
