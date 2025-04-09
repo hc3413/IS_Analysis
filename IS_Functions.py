@@ -410,29 +410,29 @@ def IS_plot_fit(
                 if params.get('R_mem1') is not None:
                     param_entries.append(f"R1={params['R_mem1']:.1e}")
                 if params.get('C_mem1') is not None:
-                    param_entries.append(f"C1={params['C_mem1']:.1e}")
+                    param_entries.append(f"C1={params['C_mem1']:.2e}")
                 
                 # Handle RC2 circuit parameters
                 if params.get('R_mem2') is not None:
                     param_entries.append(f"R2={params['R_mem2']:.1e}")
                 if params.get('C_mem2') is not None:
-                    param_entries.append(f"C2={params['C_mem2']:.1e}")
+                    param_entries.append(f"C2={params['C_mem2']:.2e}")
                 
                 # Handle CPE parameters
                 if params.get('Q1') is not None:
-                    param_entries.append(f"Q1={params['Q1']:.1e}")
+                    param_entries.append(f"Q1={params['Q1']:.2e}")
                 if params.get('alpha1') is not None:
                     param_entries.append(f"α1={params['alpha1']:.2f}")
                 if params.get('Q2') is not None:
-                    param_entries.append(f"Q2={params['Q2']:.1e}")
+                    param_entries.append(f"Q2={params['Q2']:.2e}")
                 if params.get('alpha2') is not None:
                     param_entries.append(f"α2={params['alpha2']:.2f}")
                 
                 # Handle common parameters
                 if params.get('R_series') is not None:
                     param_entries.append(f"Rs={params['R_series']:.1e}")
-                if params.get('C_pad') is not None:
-                    param_entries.append(f"Cp={params['C_pad']:.1e}")
+                #if params.get('C_pad') is not None:
+                    #param_entries.append(f"Cp={params['C_pad']:.1e}")
                     
                 param_string = ", ".join(param_entries)
             
