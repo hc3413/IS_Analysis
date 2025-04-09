@@ -33,6 +33,8 @@ class ISdata:
     # Fitted data attributes
     Zcomplex_fit: np.ndarray = None  # (frequency, Zcomplex), fitted by a model
     Z_parameters: dict = None  # Fitted parameters from the model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad, Q1, Q2, alpha1, alpha2 )
+    Zcomplex_debye_fit: np.ndarray = None  # (frequency, Zcomplex), fitted by a Debye model
+    Z_parameters_debye: dict = None  # Fitted parameters from the Debye model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad)
     
     # Tuple storing the data frames of the imported data for debugging
     Zabsphi_df: pd.DataFrame = None

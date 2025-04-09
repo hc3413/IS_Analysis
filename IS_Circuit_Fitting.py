@@ -163,11 +163,23 @@ def fit_impedance_data(
                      # 'RC3':  R_s + p( C_pad, (p(R1,C1) + p(R2,C2)) )
                      # 'CPE3': R_s + p( C_pad, (p(R1,CPE1) + p(R2,CPE2)) )
     # --- Other arguments remain the same ---
-    freq_bounds=None, med_filt=0, fixed_params=None, plot_fit=True,
-    plot_type='Zrealimag', fig_size=(3.5, 2.625), use_de=True,
-    de_bounds_dict=None, ls_bounds_dict=None, initial_guess_dict=None,
-    de_maxiter=500, de_popsize=15, de_tol=0.01,
-    ls_max_nfev=3000, ls_ftol=1e-9, ls_xtol=1e-9, ls_gtol=1e-9
+    freq_bounds=None, 
+    med_filt=0, 
+    fixed_params=None, 
+    plot_fit=True,
+    plot_type='Zrealimag', 
+    fig_size=(3.5, 2.625), 
+    use_de=True,
+    de_bounds_dict=None, 
+    ls_bounds_dict=None, 
+    initial_guess_dict=None,
+    de_maxiter=500, 
+    de_popsize=15, 
+    de_tol=0.01,
+    ls_max_nfev=3000, 
+    ls_ftol=1e-9, 
+    ls_xtol=1e-9, 
+    ls_gtol=1e-9
     ):
     """
     Fits impedance data to a specified equivalent circuit model...
