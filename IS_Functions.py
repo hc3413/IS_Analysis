@@ -319,6 +319,7 @@ def IS_plot_fit(
     med_filt: int = 0, # 0 = no median filter, x = size of the median filter
     show_key: bool = True, # Show key/legend - changed default to True to show parameters
     freq_lim: tuple = None, # Frequency limits for limiting data in colecole and modmod plot
+    fit_type: str = 'RC', # 'RC' for main fit, 'debye' for Debye fit
 ):
     '''Plotting function for impedance data with fitted model curves using constrained_layout.
     
@@ -327,6 +328,7 @@ def IS_plot_fit(
     data_in: list - the list of Measurement class data to plot
     d_type: str - the type of data to plot: 'Zabsphi', 'Zrealimag', 'permittivity', 'tandelta', 'modulus'
     fig_size: tuple - Desired base figure size. Constrained layout might adjust slightly.
+    fit_type: str - 'RC' (default) for main fit, 'debye' for Debye fit
     '''
 
     if not data_in:
@@ -346,10 +348,10 @@ def IS_plot_fit(
 
     # Titles and labels
     titles = {
-        'Zabsphi': (r"$|Z|\,(\Omega)$", r"Phase ($^{\circ}$)"),
-        'Zrealimag': (r"$Z'\,(\Omega)$", r"$-Z''\,(\Omega)$"),
-        'permittivity': (r"$\varepsilon'$", r"$\varepsilon''$"),
-        'tandelta': (r"$\sigma$ (S/m)", r"$\tan\delta$"), 
+        'Zabsphi': (r"$|Z|\\,(\\Omega)$", r"Phase ($^{\\circ}$)"),
+        'Zrealimag': (r"$Z'\\,(\\Omega)$", r"$-Z''\\,(\\Omega)$"),
+        'permittivity': (r"$\\varepsilon'$", r"$\\varepsilon''$"),
+        'tandelta': (r"$\\sigma$ (S/m)", r"$\\tan\\delta$"), 
         'modulus': (r"$M'$", r"$M''$"),
         'colecole': (r"$Z'$", r"$-Z''$"), 
         'modmod': (r"$M'$", r"$-M''$"), 
@@ -465,81 +467,54 @@ def IS_plot_fit(
                 data = measurement.Zabsphi
                 x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]
                 ax[0].set_yscale('log')
+                fit_data = getattr(measurement, 'Zabsphi_fit' if fit_type=='RC' else 'Zabsphi_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 0], fit_data[:, 1], fit_data[:, 2]
             elif d_type == 'Zrealimag':
                 data = measurement.Zrealimag
                 x, y1, y2 = data[:, 0], data[:, 1], -data[:, 2]
                 ax[0].set_yscale('log')
+                fit_data = getattr(measurement, 'Zrealimag_fit' if fit_type=='RC' else 'Zrealimag_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 0], fit_data[:, 1], -fit_data[:, 2]
             elif d_type == 'permittivity':
                 data = measurement.permittivity
                 x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]
+                fit_data = getattr(measurement, 'permittivity_fit' if fit_type=='RC' else 'permittivity_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 0], fit_data[:, 1], fit_data[:, 2]
             elif d_type == 'tandelta':
                 cond_data = measurement.conductivity
                 tan_delta_data = measurement.tandelta
                 x, y1, y2 = cond_data[:, 0], cond_data[:, 1], tan_delta_data[:, 1]
                 ax[0].set_yscale('log')
+                fit_data = getattr(measurement, 'tandelta_fit' if fit_type=='RC' else 'tandelta_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 0], fit_data[:, 1], fit_data[:, 2]
             elif d_type == 'modulus':
                 data = measurement.modulus
                 x, y1, y2 = data[:, 0], data[:, 1], data[:, 2]
+                fit_data = getattr(measurement, 'modulus_fit' if fit_type=='RC' else 'modulus_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 0], fit_data[:, 1], fit_data[:, 2]
             elif d_type == 'colecole':
                 data = measurement.Zrealimag
-                x, y1, y2 = data[:, 1], -data[:, 2], data[:, 0]  # y2 contains frequency for filtering
+                x, y1, y2 = data[:, 1], -data[:, 2], data[:, 0]
+                fit_data = getattr(measurement, 'Zrealimag_fit' if fit_type=='RC' else 'Zrealimag_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 1], -fit_data[:, 2], fit_data[:, 0]
             elif d_type == 'modmod':
                 data = measurement.modulus
-                x, y1, y2 = data[:, 1], -data[:, 2], data[:, 0]  # y2 contains frequency for filtering
+                x, y1, y2 = data[:, 1], -data[:, 2], data[:, 0]
+                fit_data = getattr(measurement, 'modulus_fit' if fit_type=='RC' else 'modulus_fit_debye', None)
+                if fit_data is not None:
+                    fit_x, fit_y1, fit_y2 = fit_data[:, 1], -fit_data[:, 2], fit_data[:, 0]
+            else:
+                fit_data = None
+            if fit_data is None:
+                print(f"Warning: No fitted data found for {plot_string} (fit_type={fit_type}, d_type={d_type}). Skipping fit plot.")
+                continue
             
-
-            # --- Extract Fitted Data ---
-            fit_freq = measurement.Zcomplex_fit[:, 0]
-            fit_complex = measurement.Zcomplex_fit[:, 1]
-            
-            # Calculate the appropriate data based on d_type
-            if d_type == 'Zabsphi':
-                fit_y1 = np.abs(fit_complex)
-                fit_y2 = np.angle(fit_complex, deg=True)
-            elif d_type == 'Zrealimag':
-                fit_y1 = fit_complex.real
-                fit_y2 = -fit_complex.imag
-            elif d_type == 'permittivity':
-                eps0 = 8.854e-12
-                Cap_0 = eps0*((20e-6)**2)/(30e-9)
-                omega = 2 * np.pi * fit_freq
-                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
-                fit_y1 = np.real(epsilon)
-                fit_y2 = -np.imag(epsilon)
-            elif d_type == 'tandelta':
-                eps0 = 8.854e-12
-                Cap_0 = eps0*((20e-6)**2)/(30e-9)
-                omega = 2 * np.pi * fit_freq
-                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
-                epsilon_real = np.real(epsilon)
-                epsilon_imag = -np.imag(epsilon)
-                tandelta = epsilon_imag / (epsilon_real + 1e-20)
-                fit_y1 = omega * eps0 * epsilon_imag  # Conductivity
-                fit_y2 = tandelta
-            elif d_type == 'modulus':
-                eps0 = 8.854e-12
-                Cap_0 = eps0*((20e-6)**2)/(30e-9)
-                omega = 2 * np.pi * fit_freq
-                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
-                modulus = 1/epsilon
-                fit_y1 = np.real(modulus)
-                fit_y2 = np.imag(modulus)
-            elif d_type == 'colecole':
-                fit_y1 = fit_complex.real
-                fit_y2 = -fit_complex.imag
-            elif d_type == 'modmod':
-                eps0 = 8.854e-12
-                Cap_0 = eps0*((20e-6)**2)/(30e-9)
-                omega = 2 * np.pi * fit_freq
-                epsilon = 1/(1j*omega*Cap_0 * fit_complex)
-                modulus = 1/epsilon
-                fit_y1 = np.real(modulus)
-                fit_y2 = -np.imag(modulus)
-            
-            # Store the x values for the fit
-            fit_x = fit_freq.copy()
-            fit_x1, fit_x2 = fit_x.copy(), fit_x.copy()
-
             # --- Apply Median Filter (only to measured data) ---
             if med_filt > 0:
                 y1 = medfilt(y1, kernel_size=med_filt)
@@ -560,10 +535,10 @@ def IS_plot_fit(
                 fit_x = fit_x[fit_x_mask]
                 fit_y1 = fit_y1[fit_x_mask]
                 fit_y2 = fit_y2[fit_x_mask]
-                fit_x1, fit_x2 = fit_x.copy(), fit_x.copy()
-
+                
             # Create separate copies for y-axis masking
             x1, x2 = x.copy(), x.copy()
+            fit_x1, fit_x2 = fit_x.copy(), fit_x.copy()
 
             # Y-axis left limits
             if y_lim_left:
@@ -659,19 +634,13 @@ def IS_plot_fit(
         ax[0].set_ylim(y_lim_left)
     if y_lim_right and len(ax) > 1:
         ax[1].set_ylim(y_lim_right)
-        
-    # --- Legends ---
-    if show_key:  # Only show legend if explicitly requested
+    if show_key:
         handles, labels = ax[0].get_legend_handles_labels()
         ax[0].legend(handles, labels)
-
         if len(ax) > 1:
             handles, labels = ax[1].get_legend_handles_labels()
             ax[1].legend(handles, labels)
-
-    # Layout and show
     plt.show()
-
     return fig, ax
 
 def run_to_dict(data_in):

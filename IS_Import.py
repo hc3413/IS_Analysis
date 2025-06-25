@@ -18,7 +18,7 @@ class ISdata:
     V_rms: float = None # AC voltage applied
     Temperature: float = None
     res_state: str = None
-    vac_state: str = None
+    vac_state: str = None #'vacuum', 'ambient', 'vac'
     device_name: str = None
     amp_state: str = None
     
@@ -32,8 +32,22 @@ class ISdata:
     
     # Fitted data attributes
     Zcomplex_fit: np.ndarray = None  # (frequency, Zcomplex), fitted by a model
+    Zabsphi_fit: np.ndarray = None  # (frequency, Zabs, phi), fitted by a model
+    Zrealimag_fit: np.ndarray = None  # (frequency, Zreal, Zimag), fitted by a model
+    permittivity_fit: np.ndarray = None  # (frequency, Real_permittivity, Imag_permittivity), fitted by a model
+    tandelta_fit: np.ndarray = None  # (frequency, tan delta), fitted by a model
+    conductivity_fit: np.ndarray = None  # (frequency, conductivity, loss), fitted by a model
+    modulus_fit: np.ndarray = None  # (frequency, modulus, phase), fitted by a model
     Z_parameters: dict = None  # Fitted parameters from the model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad, Q1, Q2, alpha1, alpha2 )
+    
+    # Fitted data attributes for Debye model
     Zcomplex_debye_fit: np.ndarray = None  # (frequency, Zcomplex), fitted by a Debye model
+    Zabsphi_fit_debye: np.ndarray = None  # (frequency, Zabs, phi), fitted by a Debye model
+    Zrealimag_fit_debye: np.ndarray = None  # (frequency, Zreal, Zimag), fitted by a Debye model
+    permittivity_fit_debye: np.ndarray = None  # (frequency, Real_permittivity, Imag_permittivity), fitted by a Debye model
+    tandelta_fit_debye: np.ndarray = None  # (frequency, tan delta), fitted by a Debye model
+    conductivity_fit_debye: np.ndarray = None  # (frequency, conductivity, loss), fitted by a Debye model
+    modulus_fit_debye: np.ndarray = None  # (frequency, modulus, phase), fitted by a Debye model
     Z_parameters_debye: dict = None  # Fitted parameters from the Debye model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad)
     
     # Tuple storing the data frames of the imported data for debugging
@@ -73,6 +87,77 @@ class ISdata:
     def plot_string(self, value: str):
         self._plot_string_override = value if value else self._plot_string_override
 
+    def transform_data(self, type="import"):
+        """Transform (Zabs, phi) to: (Zreal, Zimag), permittivity, tandelta, conductivity, modulus for this ISdata object."""
+        transform_measurement_data(self, type=type)
+
+def transform_measurement_data(measurement, type="import"):
+    """Transform (Zabs, phi) to: (Zreal, Zimag), permittivity, tandelta, conductivity, modulus for a single ISdata object.
+    type: 'import' (default), 'fitted', or 'debye' -- determines which attributes to write to."""
+    eps0 = 8.854e-12  # Vacuum permittivity (F/m)
+    Cap_0 = eps0*((20e-6)**2)/(30e-9)  # Vacuum capacitance
+
+    if type == "import":
+        Zap = np.copy(measurement.Zabsphi)
+    elif type == "fitted":
+        if measurement.Zabsphi_fit is None:
+            print("No fitted data to transform for this measurement.")
+            return
+        Zap = np.copy(measurement.Zabsphi_fit)
+    elif type == "debye":
+        if measurement.Zabsphi_fit_debye is None:
+            print("No Debye fitted data to transform for this measurement.")
+            return
+        Zap = np.copy(measurement.Zabsphi_fit_debye)
+    else:
+        raise ValueError("type must be 'import', 'fitted', or 'debye'")
+
+    # Compute Zreal, Zimag from Zabs, phi
+    Z_complex = Zap[:, 1]*np.exp(1j*np.radians(Zap[:, 2]))
+    Zrealimag = np.column_stack((Zap[:, 0], np.real(Z_complex), np.imag(Z_complex)))
+    Zcomplex = np.column_stack((Zap[:, 0], Z_complex))
+
+    # Compute permittivity (real and imaginary parts)
+    omega = 2 * np.pi * Zap[:, 0]
+    epsilon = 1/(1j*omega*Cap_0 * Z_complex)
+    epsilon_real = np.real(epsilon)
+    epsilon_imag = -np.imag(epsilon)
+    permittivity = np.column_stack((Zap[:, 0], epsilon_real, epsilon_imag))
+
+    # Compute tan delta
+    tandelta = epsilon_imag / (epsilon_real + 1e-20)
+    tandelta_arr = np.column_stack((Zap[:, 0], tandelta))
+
+    # Compute conductivity
+    conductivity = omega * eps0 * epsilon_imag
+    conductivity_arr = np.column_stack((Zap[:, 0], conductivity))
+
+    # Compute electric modulus (real and imaginary parts)
+    Modulus_complex = 1/epsilon
+    modulus = np.column_stack((Zap[:, 0], np.real(Modulus_complex), np.imag(Modulus_complex)))
+
+    if type == "import":
+        measurement.Zcomplex = Zcomplex
+        measurement.Zrealimag = Zrealimag
+        measurement.permittivity = permittivity
+        measurement.tandelta = tandelta_arr
+        measurement.conductivity = conductivity_arr
+        measurement.modulus = modulus
+    elif type == "fitted":
+        measurement.Zcomplex_fit = Zcomplex
+        measurement.Zrealimag_fit = Zrealimag
+        measurement.permittivity_fit = permittivity
+        measurement.tandelta_fit = tandelta_arr
+        measurement.conductivity_fit = conductivity_arr
+        measurement.modulus_fit = modulus
+    elif type == "debye":
+        measurement.Zcomplex_debye_fit = Zcomplex
+        measurement.Zrealimag_fit_debye = Zrealimag
+        measurement.permittivity_fit_debye = permittivity
+        measurement.tandelta_fit_debye = tandelta_arr
+        measurement.conductivity_fit_debye = conductivity_arr
+        measurement.modulus_fit_debye = modulus
+
 class ImpedanceData(ABC):
     """Abstract base class for storing and processing impedance data from all instruments."""
 
@@ -97,43 +182,16 @@ class ImpedanceData(ABC):
         pass
 
 
-    def _transform_data(self):
+    def _transform_data(self, type="import"):
         """Transform (Zabs, phi) to: (Zreal, Zimag), permittivity, tandelta, conductivity, modulus
-        Then update the measurement objects with this data."""
+        Then update the measurement objects with this data.
+        type: 'import' (default), 'fitted', or 'debye' -- determines which attributes to write to."""
         if not self.measurements:
             print("No data to transform")
             return
 
         for measurement in self:
-            # Constants
-            eps0 = 8.854e-12  # Vacuum permittivity (F/m)
-            Cap_0 = eps0*((20e-6)**2)/(30e-9)  # Vacuum capacitance 
-
-            # Compute Zreal, Zimag from Zabs, phi
-            Zap = np.copy(measurement.Zabsphi) # Copy the data to avoid modifying the original            
-            Z_complex = Zap[:, 1]*np.exp(1j*np.radians(Zap[:, 2])) # Combine Zreal and Zimag to form complex impedance Z
-            measurement.Zcomplex = np.column_stack((Zap[:, 0], Z_complex))  # (frequency, Zreal + j*Zimag)
-            measurement.Zrealimag = np.column_stack((Zap[:, 0], np.real(Z_complex), np.imag(Z_complex)))  # (frequency, Zreal, Zimag)
-
-            # Compute permittivity (real and imaginary parts)
-            omega = 2 * np.pi * Zap[:, 0]
-            epsilon = 1/(1j*omega*Cap_0 * Z_complex)
-            epsilon_real = np.real(epsilon)  # 
-            epsilon_imag = -np.imag(epsilon)  # e = e' - je''
-            measurement.permittivity = np.column_stack((Zap[:, 0], epsilon_real, epsilon_imag))
-
-            # Compute tan delta
-            tandelta = epsilon_imag / (epsilon_real + 1e-20)  # Prevent division by zero
-            measurement.tandelta = np.column_stack((Zap[:, 0], tandelta))
-
-            # Compute conductivity
-            conductivity = omega * eps0 * epsilon_imag
-            measurement.conductivity = np.column_stack((Zap[:, 0], conductivity))
-
-            # Compute electric modulus (real and imaginary parts)
-            Modulus_complex = 1/epsilon
-            measurement.modulus = np.column_stack((Zap[:, 0], np.real(Modulus_complex), np.imag(Modulus_complex)))
-    
+            transform_measurement_data(measurement, type=type)
 
     def plot(self, index_numbers: tuple):
         """Plot Zabs and phi vs frequency for a tuple of given run numbers on a log-log scale.
@@ -343,4 +401,61 @@ class SolatronIS(ImpedanceData):
 
             except Exception as e:
                 print(f"Error loading file {fi.name}: {e}")
+                continue
+            
+            
+class KeithleyIS(ImpedanceData):
+    """Class for importing and processing Solatron impedance spectroscopy data."""
+
+    def __init__(self, root_folder: str, folder_name: str):
+        super().__init__()
+        self.folder_path = Path(root_folder) / Path(folder_name)
+        self._load_data()
+        self._transform_data()
+
+    def _load_data(self):
+        """Load data from a single Excel file with each sheet as a run. Each sheet has columns:
+        1: Zabs, 2: phi (deg), 3: DC level, 4: frequency (Hz). Only one sweep per sheet."""
+        # Find the first .xls or .xlsx file in the folder
+        excel_files = sorted([f for f in self.folder_path.iterdir() if f.suffix in ['.xls', '.xlsx']])
+        if not excel_files:
+            print("Error: No Excel (.xls/.xlsx) files found.")
+            return
+        excel_path = excel_files[0]
+        print(f"Loading Keithley data from: {excel_path}")
+        try:
+            xls = pd.ExcelFile(excel_path)
+        except Exception as e:
+            print(f"Error opening Excel file: {e}")
+            return
+        counter = 0
+        for sheet_name in xls.sheet_names:
+            try:
+                df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
+                # Expect columns: 0: Zabs, 1: phi (deg), 2: DC level, 3: frequency (Hz)
+                if df.shape[1] < 4:
+                    print(f"Sheet {sheet_name} has fewer than 4 columns, skipping.")
+                    continue
+                df.columns = ['Zabs', 'phi', 'DC Level (V)', 'frequency']
+                # Remove rows with missing frequency or Zabs
+                df = df.dropna(subset=['frequency', 'Zabs'])
+                # Extract run number from sheet name if possible, else use counter
+                try:
+                    run_number = int(sheet_name)
+                except Exception:
+                    run_number = counter
+                # Create ISdata object
+                measurement = ISdata(
+                    file_name = str(excel_path),
+                    run_number = run_number,
+                    Zabsphi = df[['frequency', 'Zabs', 'phi']].to_numpy(),
+                    folder_path = self.folder_path,
+                    DC_offset = df['DC Level (V)'].iloc[0] if not df['DC Level (V)'].isnull().all() else None,
+                    Zabsphi_df = df
+                )
+                self.measurements[counter] = measurement
+                counter += 1
+                print(f"Loaded run {run_number} from sheet '{sheet_name}' with {len(df)} points.")
+            except Exception as e:
+                print(f"Error loading sheet {sheet_name}: {e}")
                 continue

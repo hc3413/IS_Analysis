@@ -266,12 +266,26 @@ def fit_impedance_dielectric(
                     if C_pad_to_subtract and C_pad_to_subtract > 0: # Add back if subtracted
                         print("Adding back subtracted C_pad to final fit curve...")
                         omega_raw=2*np.pi*frequency_raw; eps=1e-18
-                        with np.errstate(divide='ignore',invalid='ignore'): Ydeb=1/np.where(np.abs(Z_complex_debye_part)<eps,eps,Z_complex_debye_part); Ypad=1j*omega_raw*C_pad_to_subtract; Ytot=Ydeb+Ypad; Ytots=np.where(np.abs(Ytot)<eps,eps,Ytot); Z_complex_fit_full=1/Ytots; Z_complex_fit_full=np.nan_to_num(Z_complex_fit_full,nan=np.inf)
-                    else: Z_complex_fit_full = Z_complex_debye_part
-                    data_obj.Zcomplex_debye_fit = np.column_stack((frequency_raw, Z_complex_fit_full))
-                    print("Stored extrapolated fit curve in data_obj.Zcomplex_debye_fit")
-                else: print("Warn: Cannot calculate full fit curve.")
-            except Exception as e_fc: print(f"Warn: Error calculating final fit curve: {e_fc}")
+                        with np.errstate(divide='ignore',invalid='ignore'):
+                            Ydeb=1/np.where(np.abs(Z_complex_debye_part)<eps,eps,Z_complex_debye_part)
+                            Ypad=1j*omega_raw*C_pad_to_subtract
+                            Ytot=Ydeb+Ypad
+                            Ytots=np.where(np.abs(Ytot)<eps,eps,Ytot)
+                            Z_complex_fit_full=1/Ytots
+                            Z_complex_fit_full=np.nan_to_num(Z_complex_fit_full,nan=np.inf)
+                    else:
+                        Z_complex_fit_full = Z_complex_debye_part
+                    # Store Zabsphi_fit_debye for transformation
+                    Zabs_fit = np.abs(Z_complex_fit_full)
+                    phi_fit = np.angle(Z_complex_fit_full, deg=True)
+                    data_obj.Zabsphi_fit_debye = np.column_stack((frequency_raw, Zabs_fit, phi_fit))
+                    # Call transform for Debye fitted data using the unified function
+                    from IS_Import import transform_measurement_data
+                    transform_measurement_data(data_obj, type="debye")
+                else:
+                    print("Warn: Cannot calculate full fit curve.")
+            except Exception as e_fc:
+                print(f"Warn: Error calculating final fit curve: {e_fc}")
 
             # --- Plotting ---
             if plot_fit and Z_complex_fit_full is not None:

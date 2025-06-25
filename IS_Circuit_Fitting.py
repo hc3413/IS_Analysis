@@ -379,16 +379,21 @@ def fit_impedance_data(
             data_obj.Z_parameters = target_Z_params
             #print(f"Stored fitted parameters in data_obj.Z_parameters")
 
-            # --- Calculate final fit curve over FULL frequency range ---
-            Z_complex_fit_full = None
+            # --- Export and Calculate final fit curve over FULL frequency range ---
             try:
                 fitted_params_full_vector = [final_fitted_params_dict[name] for name in param_order]
                 if frequency_raw is not None and len(frequency_raw) > 0:
-                     Z_complex_fit_full = unified_circuit_model(fitted_params_full_vector, frequency_raw, model_type)
-                     data_obj.Zcomplex_fit = np.column_stack((frequency_raw, Z_complex_fit_full))
-                     #print("Stored extrapolated fit curve in data_obj.Zcomplex_fit")
-                else: print("Warn: Cannot calculate full fit curve.")
-            except Exception as e_fc: print(f"Warn: Error calculating final fit curve: {e_fc}")
+                    Z_complex_fit_full = unified_circuit_model(fitted_params_full_vector, frequency_raw, model_type)
+                    # Only store Zabsphi_fit for transformation
+                    Zabs_fit = np.abs(Z_complex_fit_full)
+                    phi_fit = np.angle(Z_complex_fit_full, deg=True)
+                    data_obj.Zabsphi_fit = np.column_stack((frequency_raw, Zabs_fit, phi_fit))
+                    # Call transform for fitted data (assume data_obj is the container)
+                    data_obj.transform_data(type="fitted")
+                else:
+                    print("Warn: Cannot calculate full fit curve.")
+            except Exception as e_fc:
+                print(f"Warn: Error calculating final fit curve: {e_fc}")
 
               # --- Plotting ---
             if plot_fit:
