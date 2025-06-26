@@ -21,6 +21,7 @@ class ISdata:
     vac_state: str = None #'vacuum', 'ambient', 'vac'
     device_name: str = None
     amp_state: str = None
+    Cvac: float = 8.854e-12 * ((20e-6)**2) / (30e-9)  # Vacuum capacitance, used for permittivity calculations
     
     # Calculated transformed data attributes
     Zcomplex: np.ndarray = None  # (frequency, Zreal + j*Zimag), computed later
@@ -39,6 +40,7 @@ class ISdata:
     conductivity_fit: np.ndarray = None  # (frequency, conductivity, loss), fitted by a model
     modulus_fit: np.ndarray = None  # (frequency, modulus, phase), fitted by a model
     Z_parameters: dict = None  # Fitted parameters from the model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad, Q1, Q2, alpha1, alpha2 )
+    cost: float = None  # Cost function value from the fitting process
     
     # Fitted data attributes for Debye model
     Zcomplex_debye_fit: np.ndarray = None  # (frequency, Zcomplex), fitted by a Debye model
@@ -49,6 +51,7 @@ class ISdata:
     conductivity_fit_debye: np.ndarray = None  # (frequency, conductivity, loss), fitted by a Debye model
     modulus_fit_debye: np.ndarray = None  # (frequency, modulus, phase), fitted by a Debye model
     Z_parameters_debye: dict = None  # Fitted parameters from the Debye model (R_mem, C_mem, R_mem2, C_mem2, R_series, C_pad)
+    cost_debye: float = None  # Cost function value from the Debye fitting process
     
     # Tuple storing the data frames of the imported data for debugging
     Zabsphi_df: pd.DataFrame = None
@@ -95,7 +98,7 @@ def transform_measurement_data(measurement, type="import"):
     """Transform (Zabs, phi) to: (Zreal, Zimag), permittivity, tandelta, conductivity, modulus for a single ISdata object.
     type: 'import' (default), 'fitted', or 'debye' -- determines which attributes to write to."""
     eps0 = 8.854e-12  # Vacuum permittivity (F/m)
-    Cap_0 = eps0*((20e-6)**2)/(30e-9)  # Vacuum capacitance
+    Cap_0 = measurement.Cvac #eps0*((20e-6)**2)/(30e-9)  # Vacuum capacitance
 
     if type == "import":
         Zap = np.copy(measurement.Zabsphi)
@@ -437,13 +440,23 @@ class KeithleyIS(ImpedanceData):
                     print(f"Sheet {sheet_name} has fewer than 4 columns, skipping.")
                     continue
                 df.columns = ['Zabs', 'phi', 'DC Level (V)', 'frequency']
+                # Convert all columns to numeric, coerce errors to NaN
+                for col in ['Zabs', 'phi', 'DC Level (V)', 'frequency']:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
                 # Remove rows with missing frequency or Zabs
                 df = df.dropna(subset=['frequency', 'Zabs'])
                 # Extract run number from sheet name if possible, else use counter
                 try:
-                    run_number = int(sheet_name)
+                    # Try to extract a number from the sheet name using regex (e.g., 'Run443' -> 443)
+                    match = re.search(r'(\d+)', str(sheet_name))
+                    if match:
+                        run_number = int(match.group(1))
+                    else:
+                        run_number = counter
+                        print(f"Could not extract run number from sheet '{sheet_name}', using counter {counter}")
                 except Exception:
                     run_number = counter
+                    print(f"Using counter {counter} as run number for sheet '{sheet_name}'")
                 # Create ISdata object
                 measurement = ISdata(
                     file_name = str(excel_path),

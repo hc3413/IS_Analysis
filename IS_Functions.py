@@ -29,7 +29,7 @@ def IS_plot(
     y_lim_right: tuple = None, # limit for the right plot y axis
     sort_data: bool = True, # Order the data by temperature and DC offset
     fig_size: tuple = (3.5, 2.625), # Base size of the figure
-    c_bar: int = 0, # 0 = no colorbar, 1 = temperature, 2 = DC_offset
+    c_bar: int = 0, # 0 = no colorbar, 1 = temperature, 2 = DC_offset, 3 = V_rms, 4 = color cycle between lists
     med_filt: int = 0, # 0 = no median filter, x = size of the median filter
     force_key: bool = False, # Force a key to be created even if c_bar is activated
     show_key: bool = True, # Show key/legend - changed default to True to show parameters
@@ -78,7 +78,7 @@ def IS_plot(
     ylabels = titles[d_type]
 
     # Default color cycle if no colorbar
-    if c_bar == 0:
+    if c_bar == 0 or c_bar == 4:
         # Use the default prop_cycle defined in your style
         prop_cycle = plt.rcParams['axes.prop_cycle']
         colors = prop_cycle.by_key()['color']
@@ -208,9 +208,11 @@ def IS_plot(
                 color = cmap(norm(measurement.DC_offset))
             elif c_bar == 3 and measurement.V_rms is not None:
                 color = cmap(norm(measurement.V_rms))
+            elif c_bar == 4:
+                color = colors[group_idx % len(colors)] # Cycle the color based on group index within the list of lists
             else:
                 # Use default color cycle if no colorbar or value is None
-                color = colors[i % len(colors)] # Cycle through default colors
+                color = colors[i % len(colors)] # Cycle through default colors within each list
 
             # --- Plot ---
 
@@ -286,14 +288,14 @@ def IS_plot(
         
     # --- Legends ---
     if show_key:  # Show legend if enabled
-        if c_bar != 0 and not force_key and len(data_groups)>1 :  # Add group legend when colorbar is enabled and force_key is disabled
+        if c_bar != 0 and c_bar != 4 and not force_key and len(data_groups)>1 :  # Add group legend when colorbar is enabled and force_key is disabled
             group_handles = [
                 plt.Line2D([0], [0], color='black', linestyle=linestyle, label=label)
                 for label, linestyle in group_legend_entries
             ]
             ax[0].legend(handles=group_handles)
 
-        elif c_bar == 0 or force_key:  # Default legend behavior
+        elif c_bar == 0 or c_bar ==4 or force_key:  # Default legend behavior
             handles, labels = ax[0].get_legend_handles_labels()
             ax[0].legend(handles, labels)  # Customize further if needed
 
@@ -348,10 +350,10 @@ def IS_plot_fit(
 
     # Titles and labels
     titles = {
-        'Zabsphi': (r"$|Z|\\,(\\Omega)$", r"Phase ($^{\\circ}$)"),
-        'Zrealimag': (r"$Z'\\,(\\Omega)$", r"$-Z''\\,(\\Omega)$"),
-        'permittivity': (r"$\\varepsilon'$", r"$\\varepsilon''$"),
-        'tandelta': (r"$\\sigma$ (S/m)", r"$\\tan\\delta$"), 
+        'Zabsphi': (r"$|Z|\,(\Omega)$", r"Phase ($^{\circ}$)"),
+        'Zrealimag': (r"$Z'\,(\Omega)$", r"$-Z''\,(\Omega)$"),
+        'permittivity': (r"$\varepsilon'$", r"$\varepsilon''$"),
+        'tandelta': (r"$\sigma$ (S/m)", r"$\tan\delta$"), 
         'modulus': (r"$M'$", r"$M''$"),
         'colecole': (r"$Z'$", r"$-Z''$"), 
         'modmod': (r"$M'$", r"$-M''$"), 
@@ -455,6 +457,9 @@ def IS_plot_fit(
                     
                 if DC_offset is not None:
                     param_entries.append(f"DC={DC_offset:.1f}")
+                    
+                if measurement.cost is not None:
+                    param_entries.append(f"cost={measurement.cost:.3f}")
                     
                 param_string = ", ".join(param_entries)
             
@@ -689,8 +694,12 @@ def extract_single_dc(data_in, DC_val = 0):
             if round(measurement.DC_offset, 2) == round(DC_val, 2):
                 # Append the measurement to the list
                 run_filt.append(measurement)
-        # Append the filtered run to the main list
-        dat_filt.append(run_filt)
+            #else:
+                #print(f"DC offset = {measurement.DC_offset} V does not match the requested value of {DC_val} V. Skipping this measurement.")
+        
+        # Append the filtered run to the main list only if it contains measurements and isn't an empty list
+        if len(run_filt) > 0    :
+            dat_filt.append(run_filt)
     return dat_filt
 
 

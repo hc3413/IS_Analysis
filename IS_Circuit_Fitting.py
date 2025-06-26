@@ -368,15 +368,17 @@ def fit_impedance_data(
 
         if ls_result.success:
             ls_success = True; print("LS OK!")
-            fitted_params_free = ls_result.x; final_cost = ls_result.cost; print(f"  LS Final Cost: {final_cost:.4e}")
+            fitted_params_free = ls_result.x; final_cost = ls_result.cost; print(f"  LS Final Cost: {final_cost:.3f}")
             final_fitted_params_dict = fixed_params.copy(); final_fitted_params_dict.update(dict(zip(free_param_names, fitted_params_free)))
-            print("  Final Fitted Parameters:"); [print(f"    {name}: {final_fitted_params_dict[name]:.4e}") for name in param_order]
+            print("  Final Fitted Parameters:"); [print(f"    {name}: {final_fitted_params_dict[name]:.3f}") for name in param_order]
 
             # --- Store parameters in data_obj.Z_parameters ---
             target_Z_params = {name: None for name in ALL_POSSIBLE_PARAMS}
             for name, value in final_fitted_params_dict.items():
                  if name in target_Z_params: target_Z_params[name] = value
             data_obj.Z_parameters = target_Z_params
+            # Store the final fit cost
+            data_obj.cost = final_cost
             #print(f"Stored fitted parameters in data_obj.Z_parameters")
 
             # --- Export and Calculate final fit curve over FULL frequency range ---
@@ -406,10 +408,11 @@ def fit_impedance_data(
                     scale_factor = 1 # No scaling initially, adjust if needed based on data
                     y_unit_prefix = ""
                     # Auto-detect scale based on max Z'
-                    max_z_real = np.max(np.abs(Z_measured_raw.real)) if len(Z_measured_raw)>0 else 1
-                    if max_z_real > 2e6: scale_factor = 1e6; y_unit = r"M$\Omega$"
-                    elif max_z_real > 2e3: scale_factor = 1e3; y_unit = r"k$\Omega$"
-                    else: scale_factor = 1; y_unit = r"$\Omega$"
+                    # max_z_real = np.max(np.abs(Z_measured_raw.real)) if len(Z_measured_raw)>0 else 1
+                    # if max_z_real > 2e6: scale_factor = 1e6; y_unit = r"M$\Omega$"
+                    # elif max_z_real > 2e3: scale_factor = 1e3; y_unit = r"k$\Omega$"
+                    # else: scale_factor = 1; y_unit = r"$\Omega$"
+                    scale_factor = 1; y_unit = r"$\Omega$"
 
                     if plot_type == 'Zrealimag':
                         # measured data over full range

@@ -247,14 +247,16 @@ def fit_impedance_dielectric(
 
         if ls_res.success:
             ls_success = True; print("LS OK!")
-            fitted_free=ls_res.x; final_cost=ls_res.cost; print(f"  LS Final Cost: {final_cost:.4e}")
+            fitted_free=ls_res.x; final_cost=ls_res.cost; print(f"  LS Final Cost: {final_cost:.3f}")
             final_fitted_params_dict=fixed_params.copy(); final_fitted_params_dict.update(dict(zip(free_names, fitted_free)))
-            print("  Final Fitted Parameters:"); [print(f"    {name}: {final_fitted_params_dict[name]:.4e}") for name in param_order]
+            print("  Final Fitted Parameters:"); [print(f"    {name}: {final_fitted_params_dict[name]:.3f}") for name in param_order]
 
             # --- Store parameters in data_obj.Z_parameters_debye ---
             target_Z_params = {name: None for name in ALL_POSSIBLE_DEBYE_PARAMS}
             for name, value in final_fitted_params_dict.items(): target_Z_params[name] = value
             data_obj.Z_parameters_debye = target_Z_params
+            # Store the final fit cost
+            data_obj.cost = final_cost
             print(f"Stored fitted parameters in data_obj.Z_parameters_debye")
 
             # --- Calculate final fit curve (adds back C_pad if needed) ---
