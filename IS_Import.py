@@ -21,7 +21,7 @@ class ISdata:
     vac_state: str = None #'vacuum', 'ambient', 'vac'
     device_name: str = None
     amp_state: str = None
-    Cvac: float = 8.854e-12 * ((20e-6)**2) / (30e-9)  # Vacuum capacitance, used for permittivity calculations
+    C_vac: float = 8.854e-12 * ((20e-6)**2) / (30e-9)  # Vacuum capacitance, used for permittivity/modulus calculations
     
     # Calculated transformed data attributes
     Zcomplex: np.ndarray = None  # (frequency, Zreal + j*Zimag), computed later
@@ -98,7 +98,7 @@ def transform_measurement_data(measurement, type="import"):
     """Transform (Zabs, phi) to: (Zreal, Zimag), permittivity, tandelta, conductivity, modulus for a single ISdata object.
     type: 'import' (default), 'fitted', or 'debye' -- determines which attributes to write to."""
     eps0 = 8.854e-12  # Vacuum permittivity (F/m)
-    Cap_0 = measurement.Cvac #eps0*((20e-6)**2)/(30e-9)  # Vacuum capacitance
+    C_vac = measurement.C_vac # Vacuum capacitance
 
     if type == "import":
         Zap = np.copy(measurement.Zabsphi)
@@ -122,7 +122,7 @@ def transform_measurement_data(measurement, type="import"):
 
     # Compute permittivity (real and imaginary parts)
     omega = 2 * np.pi * Zap[:, 0]
-    epsilon = 1/(1j*omega*Cap_0 * Z_complex)
+    epsilon = 1/(1j*omega*C_vac * Z_complex)
     epsilon_real = np.real(epsilon)
     epsilon_imag = -np.imag(epsilon)
     permittivity = np.column_stack((Zap[:, 0], epsilon_real, epsilon_imag))
@@ -258,9 +258,12 @@ class ImpedanceData(ABC):
 class AgilentIS(ImpedanceData):
     """Class for importing and processing Agilent impedance spectroscopy data."""
 
-    def __init__(self, root_folder: str, folder_name: str):
+    def __init__(self, root_folder: str, folder_name: str, C_vac: float = None):
         super().__init__()
         self.folder_path = Path(root_folder) / Path(folder_name)
+        self.C_vac = C_vac
+        if self.C_vac is None:
+            print("Warning: Using default vacuum capacitance for 20um device (C_vac = %.3e F)" % (8.854e-12 * ((20e-6)**2) / (30e-9)))
         self._load_data()
         self._transform_data()
 
@@ -296,7 +299,8 @@ class AgilentIS(ImpedanceData):
                     folder_path = self.folder_path,
                     DC_offset=self._extract_value(fi.stem, r'bias_([\d.]+)', default=0),
                     Temperature=self._extract_value(fi.stem, r'temp_([\d.]+)', default=0),
-                    Zabsphi_df = df  # Store the data frame for debugging
+                    Zabsphi_df = df,  # Store the data frame for debugging
+                    C_vac=self.C_vac
                 )
                 
                 # Store the ISdata object in the dictionary indexed by an integer
@@ -313,9 +317,12 @@ class AgilentIS(ImpedanceData):
 class SolatronIS(ImpedanceData):
     """Class for importing and processing Solatron impedance spectroscopy data."""
 
-    def __init__(self, root_folder: str, folder_name: str):
+    def __init__(self, root_folder: str, folder_name: str, C_vac: float = None):
         super().__init__()
         self.folder_path = Path(root_folder) / Path(folder_name)
+        self.C_vac = C_vac
+        if self.C_vac is None:
+            print("Warning: Using default vacuum capacitance for 20um device (C_vac = %.3e F)" % (8.854e-12 * ((20e-6)**2) / (30e-9)))
         self._load_data()
         self._transform_data()
 
@@ -394,6 +401,7 @@ class SolatronIS(ImpedanceData):
                         vac_state = self._extract_string(fi.stem, ('vacuum', 'ambient', 'vac'), default=None), #finds first match for state in tuple
                         amp_state = self._extract_string(fi.stem, ('noamp', 'amp'), default=None), #finds first match for state in tuple
                         device_name = self._extract_string(fi.stem, ('wirebond1','wirebond2','wirebond3', 'wirebond4','wirebond5','wirebond6', 'wirebond1v2','wirebond2v2', 'wirebond3v2','wirebond4v2'), default=None), #finds first match for state in tuple
+                        C_vac=self.C_vac
                     )
                     
                     # Store the ISdata object in the dictionary indexed by an integer
@@ -410,9 +418,12 @@ class SolatronIS(ImpedanceData):
 class KeithleyIS(ImpedanceData):
     """Class for importing and processing Solatron impedance spectroscopy data."""
 
-    def __init__(self, root_folder: str, folder_name: str):
+    def __init__(self, root_folder: str, folder_name: str, C_vac: float = None):
         super().__init__()
         self.folder_path = Path(root_folder) / Path(folder_name)
+        self.C_vac = C_vac
+        if self.C_vac is None:
+            print("Warning: Using default vacuum capacitance for 20um device (C_vac = %.3e F)" % (8.854e-12 * ((20e-6)**2) / (30e-9)))
         self._load_data()
         self._transform_data()
 
@@ -464,7 +475,8 @@ class KeithleyIS(ImpedanceData):
                     Zabsphi = df[['frequency', 'Zabs', 'phi']].to_numpy(),
                     folder_path = self.folder_path,
                     DC_offset = df['DC Level (V)'].iloc[0] if not df['DC Level (V)'].isnull().all() else None,
-                    Zabsphi_df = df
+                    Zabsphi_df = df,
+                    C_vac=self.C_vac
                 )
                 self.measurements[counter] = measurement
                 counter += 1
